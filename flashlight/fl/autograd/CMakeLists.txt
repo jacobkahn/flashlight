@@ -17,13 +17,21 @@ target_sources(
 # ----------------------------- Autograd Backends -----------------------------
 # CPU
 if (FL_USE_CPU)
+  find_package(DNNL QUIET)
+  if (DNNL_FOUND)
+    message(STATUS "DNNL found")
+  else()
+    message(STATUS "DNNL not found")
+    message(FATAL_ERROR "DNNL required to build CPU backend")
+  endif()
+
   set(
     AUTOGRAD_CPU_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/Conv2D.cpp
     ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/Pool2D.cpp
     ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/RNN.cpp
     ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/BatchNorm.cpp # generic
-    ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/MkldnnUtils.cpp # generic
+    ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/DnnlUtils.cpp # generic
     )
 
   target_sources(
@@ -35,13 +43,13 @@ if (FL_USE_CPU)
   target_link_libraries(
     flashlight
     PUBLIC
-    ${MKLDNN_LIBRARIES} # also contains MKL or mklml libraries
+    ${DNNL_LIBRARIES} # also contains MKL or mklml libraries
     )
 
   target_include_directories(
     flashlight
     PUBLIC
-    ${MKLDNN_INCLUDE_DIR} # includes MKL headers if found
+    ${DNNL_INCLUDE_DIR} # includes MKL headers if found
     )
 endif ()
 

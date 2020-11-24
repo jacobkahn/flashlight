@@ -1,68 +1,68 @@
-# - Try to find MKLDNN
+# - Try to find DNNL
 #
 # The following variables are optionally searched for defaults
 #  MKL_FOUND             : set to true if a library implementing the CBLAS interface is found
-#  USE_MKLDNN
+#  USE_DNNL
 #
 # The following are set after configuration is done:
-#  MKLDNN_FOUND          : set to true if mkl-dnn is found.
-#  MKLDNN_INCLUDE_DIR    : path to mkl-dnn include dir.
-#  MKLDNN_LIBRARIES      : list of libraries for mkl-dnn
+#  DNNL_FOUND          : set to true if mkl-dnn is found.
+#  DNNL_INCLUDE_DIR    : path to mkl-dnn include dir.
+#  DNNL_LIBRARIES      : list of libraries for mkl-dnn
 
-set(MKLDNN_LIBRARIES)
-set(MKLDNN_INCLUDE_DIR)
+set(DNNL_LIBRARIES)
+set(DNNL_INCLUDE_DIR)
 
 # Check if there's any BLAS implementation available
 find_package(BLAS)
 
 if (NOT MKL_FOUND)
-  message(STATUS "Attempting to build MKLDNN without MKL in current configuration.")
+  message(STATUS "Attempting to build DNNL without MKL in current configuration.")
 endif()
 
 # Find headers
 find_path(
-  MKLDNN_INCLUDE_DIR
+  DNNL_INCLUDE_DIR
   mkldnn.hpp mkldnn.h
   PATHS
-  ${MKLDNN_ROOT}
+  ${DNNL_ROOT}
   PATH_SUFFIXES
   include
   HINTS
-  ${MKLDNN_INC_DIR}
+  ${DNNL_INC_DIR}
   )
 
-if (MKLDNN_INCLUDE_DIR)
-  message(STATUS "MKLDNN headers found in ${MKLDNN_INCLUDE_DIR}")
+if (DNNL_INCLUDE_DIR)
+  message(STATUS "DNNL headers found in ${DNNL_INCLUDE_DIR}")
 else()
-  message(STATUS "MKLDNN headers not found; please set CMAKE_INCLUDE_PATH or MKLDNN_ROOT, or MKLDNN_INC_DIR")
+  message(STATUS "DNNL headers not found; please set CMAKE_INCLUDE_PATH or DNNL_ROOT, or DNNL_INC_DIR")
 endif()
 
 # Find library
 find_library(
-  MKLDNN_LIBRARY
+  DNNL_LIBRARY
   mkldnn
   PATHS
-  ${MKLDNN_ROOT}
+  ${DNNL_ROOT}
   PATH_SUFFIXES
   lib
   HINTS
-  ${MKLDNN_LIB_DIR}
+  ${DNNL_LIB_DIR}
 )
 
-if (MKLDNN_LIBRARY)
-  message(STATUS "Using MKLDNN library found in ${MKLDNN_LIBRARY}")
+if (DNNL_LIBRARY)
+  message(STATUS "Using DNNL library found in ${DNNL_LIBRARY}")
 else()
-  message(STATUS "MKLDNN library not found; please set CMAKE_LIBRARY_PATH or MKLDNN_ROOT, or MKLDNN_LIB_DIR")
+  message(STATUS "DNNL library not found; please set CMAKE_LIBRARY_PATH or DNNL_ROOT, or DNNL_LIB_DIR")
 endif()
 
-set(MKLDNN_LIBRARIES ${MKLDNN_LIBRARY})
+set(DNNL_LIBRARIES ${DNNL_LIBRARY})
 
 # In order of preference, try to find and use MKL, mklml, then any system BLAS lib
 if (MKL_FOUND)
-  # Add MKL to MKLDNN deps if found
+  # Add MKL to DNNL deps if found
   message(STATUS "Using MKL with MKL-DNN")
-  list(APPEND MKLDNN_LIBRARIES ${MKL_LIBRARIES})
-  list(APPEND MKLDNN_INCLUDE_DIR ${MKL_INCLUDE_DIR})
+  list(APPEND DNNL_LIBRARIES ${MKL_LIBRARIES})
+  list(APPEND DNNL_INCLUDE_DIR ${MKL_INCLUDE_DIR})
 else()
   message(STATUS "MKL not found; trying to fall back to mklml library")
   # MKL isn't found, so use the mini-MKL library (mklml) with MKL-DNN
@@ -72,11 +72,11 @@ else()
       mklml
       mklml_intel
     PATHS
-    ${MKLDNN_ROOT}
+    ${DNNL_ROOT}
     PATH_SUFFIXES
     lib
     HINTS
-    ${MKLDNN_LIB_DIR}
+    ${DNNL_LIB_DIR}
     )
   # Find mklml headers. Perform this check anyways even though it's not clear
   # if they're being used, and they're not moved to the install dir on the
@@ -85,17 +85,17 @@ else()
     MKLML_INCLUDE_DIR
     mkl.h mkl_dnn_types.h
     PATHS
-    ${MKLDNN_ROOT}
+    ${DNNL_ROOT}
     PATH_SUFFIXES
     include
     external
     HINTS
-    ${MKLDNN_INC_DIR}
+    ${DNNL_INC_DIR}
     ${MKLML_INC_DIR}
     )
   if (MKLML_INCLUDE_DIR)
     message(STATUS "Found mklml headers: ${MKLML_INCLUDE_DIR}")
-    list(APPEND MKLDNN_INCLUDE_DIR ${MKLML_INCLUDE_DIR})
+    list(APPEND DNNL_INCLUDE_DIR ${MKLML_INCLUDE_DIR})
   else()
     message(STATUS "Using MKL-DNN without mklml headers")
   endif()
@@ -103,7 +103,7 @@ else()
   if (MKLML_LIBRARY)
     message(STATUS "Found libmklml: ${MKLML_LIBRARY}")
     message(STATUS "Using mklml with MKL-DNN")
-    list(APPEND MKLDNN_LIBRARIES ${MKLML_LIBRARY})
+    list(APPEND DNNL_LIBRARIES ${MKLML_LIBRARY})
   else()
     # If we still can't find mklml, look for any viable BLAS library as a last resort
     message(STATUS "mklml not found; trying to fall back to system BLAS library")
@@ -117,7 +117,7 @@ else()
 endif ()
 
 # TODO: link?
-# Override OpenMP configuration for MKLDNN if MKL is found, so MKL OpenMP is used.
+# Override OpenMP configuration for DNNL if MKL is found, so MKL OpenMP is used.
 if (EXISTS "${MKL_LIBRARIES_gomp_LIBRARY}")
   set(MKLIOMP5LIB ${MKL_LIBRARIES_gomp_LIBRARY} CACHE STRING "Override MKL-DNN omp dependency" FORCE)
 elseif(EXISTS "${MKL_LIBRARIES_iomp5_LIBRARY}")
@@ -130,4 +130,4 @@ else(EXISTS "${MKL_LIBRARIES_gomp_LIBRARY}")
 endif(EXISTS "${MKL_LIBRARIES_gomp_LIBRARY}")
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(MKLDNN DEFAULT_MSG MKLDNN_LIBRARIES MKLDNN_INCLUDE_DIR)
+find_package_handle_standard_args(DNNL DEFAULT_MSG DNNL_LIBRARIES DNNL_INCLUDE_DIR)
