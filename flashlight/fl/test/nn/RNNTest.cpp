@@ -17,16 +17,16 @@ using namespace fl;
 
 TEST(ModuleTest, RNNFwd) {
   auto mode = RnnMode::RELU;
-  int num_layers = 5;
-  int hidden_size = 5;
-  int input_size = 5;
-  int batch_size = 5;
-  int seq_length = 5;
+  int num_layers = 3;
+  int hidden_size = 4;
+  int input_size = 4;
+  int batch_size = 2;
+  int seq_length = 2;
 
   auto in = Variable(
       af::randu(input_size, batch_size, seq_length, af::dtype::f32), true);
 
-  size_t n_params = 300;
+  size_t n_params = 120;
   auto w = Variable(af::randu(1, 1, n_params, af::dtype::f32), true);
 
   for (int i = 0; i < in.elements(); ++i) {
