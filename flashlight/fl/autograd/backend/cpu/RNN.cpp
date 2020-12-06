@@ -112,17 +112,25 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
       numLayers * directionMult * inSize * numGates * hiddenSize;
   size_t weightsIterSize =
       numLayers * directionMult * hiddenSize * numGates * hiddenSize;
-  af::array weightsInput = weights(af::seq(weightsInputSize));
 
-  af::print("weightsInput", weightsInput);
-  DevicePtr weightsPtr(weights);
+  auto weightsInputNew = af::array(1, 1, 0, 1);
+  auto weightsHiddenNew = af::array(1, 1, 0, 1);
+  for (size_t i = 0; i < numLayers; ++i) {
+    int chunkSize = hiddenSize * (hiddenSize + inSize);
 
-  std::cout << "weights num els is " << weights.elements() << " weights ptr is "
-            << std::endl;
-  for (size_t i = 0; i < weights.elements(); ++i) {
-    std::cout << static_cast<float*>(weightsPtr.get())[i] << std::endl;
+    int inputWeightsSize = hiddenSize * inSize;
+    auto inputWeightsChunk =
+        weights(af::seq(chunkSize * i, chunkSize * i + inputWeightsSize - 1));
+    weightsInputNew = af::join(2, weightsInputNew, inputWeightsChunk);
+
+    int hiddenWeightsSize = hiddenSize * hiddenSize;
+    auto inputHiddenChunk = weights(af::seq(
+        chunkSize * i + inputWeightsSize,
+        chunkSize * i + inputWeightsSize + hiddenWeightsSize - 1));
+    weightsHiddenNew = af::join(2, weightsHiddenNew, inputHiddenChunk);
   }
 
+  DevicePtr weightsInputPtr(weightsInputNew);
   // todo - don't force a format tag - use any and do a reorder based on the
   // format of the primitive - what it says - like you're supposed to
   auto weightsInputMemDesc = dnnl::memory::desc(
@@ -133,21 +141,19 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   auto weightsInputMemRawDesc = dnnl::memory::desc(
       weightsInputDims, dType, dnnl::memory::format_tag::ldgoi);
   auto weightsInputMemRawInit =
-      dnnl::memory(weightsInputMemRawDesc, dnnlEngine, weightsPtr.get());
+      dnnl::memory(weightsInputMemRawDesc, dnnlEngine, weightsInputPtr.get());
 
   // This char thing is bad and wrong and can't be trusted maybe idk
-  char* weightsPtrChar = static_cast<char*>(weightsPtr.get());
+  DevicePtr weightsHiddenPtr(weightsHiddenNew);
   auto weightsHiddenMemDesc = dnnl::memory::desc(
       weightsHiddenDims, dType, dnnl::memory::format_tag::ldigo);
   auto weightsHiddenMemInit = dnnl::memory(weightsHiddenMemDesc, dnnlEngine);
 
+  // Reorder
   auto weightsHiddenMemRawDesc = dnnl::memory::desc(
       weightsHiddenDims, dType, dnnl::memory::format_tag::ldgoi);
-  auto weightsHiddenMemRawInit = dnnl::memory(
-      weightsHiddenMemRawDesc,
-      dnnlEngine,
-      static_cast<void*>(
-          weightsPtrChar + (weightsInputSize * af::getSizeOf(weights.type()))));
+  auto weightsHiddenMemRawInit =
+      dnnl::memory(weightsHiddenMemRawDesc, dnnlEngine, weightsHiddenPtr.get());
 
   // Reduce the weights to form the bias weights. cuDNN uses two separate bias
   // terms -- see
@@ -160,11 +166,7 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   // First, grab a subarray which contains only both bias terms; then add them
   size_t biasSize = numLayers * directionMult * numGates * hiddenSize;
   size_t biasStartOffset = weightsInputSize + weightsIterSize;
-  std::cout << "bias start offset " << biasStartOffset << " biasSize "
-            << biasSize << std::endl;
-  af::array weightsFlat = af::flat(weights);
-  af::print("weightsFlat", weightsFlat);
-  af::array biasFlat = weightsFlat(af::seq(biasStartOffset, af::end));
+  af::array biasFlat = af::flat(weights)(af::seq(biasStartOffset, af::end));
   af::print("biasflat", biasFlat);
   std::cout << "biasflat els " << biasFlat.elements() << " dim4 " << numLayers
             << ", " << directionMult << ", " << numGates << ", " << hiddenSize
@@ -209,13 +211,6 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
       dnnl::reorder(weightsHiddenMemRawInit, weightsHiddenMemInit));
   fwdArgs.push_back({{DNNL_ARG_FROM, weightsHiddenMemRawInit},
                      {DNNL_ARG_TO, weightsHiddenMemInit}});
-
-  detail::executeNetwork(network, fwdArgs);
-  float* p = static_cast<float*>(weightsInputMemInit.get_data_handle());
-  std::cout << "REORDERED " << std::endl;
-  for (int i = 0; i < 4; ++i) {
-    std::cout << p[i] << std::endl;
-  }
 
   // Initialize descriptors
   if (mode == RnnMode::RELU || mode == RnnMode::TANH) {
@@ -361,7 +356,8 @@ std::tuple<Variable, Variable, Variable> rnn(
   // output as the input for layers [2, L]. Since the input size dim 0 is now
   // the hidden size, the primitive can fuse computation for arbitrarily-many
   // layers.
-  if (inputV.dims(0) == hiddenState.dims(0) || numLayers == 1) {
+  if (inputV.dims(0) == hiddenSize || numLayers == 1) {
+    std::cout << "------ In single kernel case" << std::endl;
     // Input and hidden size are the same, or we only have one layer, which
     // means we can call the impl as is
     // TODO: this is probably wrong and we probably have to do something with
@@ -381,6 +377,7 @@ std::tuple<Variable, Variable, Variable> rnn(
         kind,
         dropout);
   } else {
+    std::cout << "------ In multi kernel case" << std::endl;
     // We require more than one layer and different input and hidden sizes.
     // First compute the first layer
     auto hiddenStateL1 = hiddenState(af::span, af::span, 0);
