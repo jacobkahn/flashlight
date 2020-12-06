@@ -17,27 +17,23 @@ using namespace fl;
 
 TEST(ModuleTest, RNNFwd) {
   auto mode = RnnMode::RELU;
-  int num_layers = 2;
-  int hidden_size = 2;
-  int input_size = 2;
-  int batch_size = 1;
-  int seq_length = 1;
+  int num_layers = 5;
+  int hidden_size = 5;
+  int input_size = 5;
+  int batch_size = 5;
+  int seq_length = 5;
 
   auto in = Variable(
       af::randu(input_size, batch_size, seq_length, af::dtype::f32), true);
 
-  std::vector<float> weights = {1.0, 1.0,  1.0,  2.0,  2.0,   2.0,   0.0,
-                                0.0, 0.0,  0.0,  0.0,  0.0,   0.0,   0.0,
-                                0.0, 10.0, 15.0, 20.0, 110.0, 105.0, 100.0};
-  size_t n_params = 24;
+  size_t n_params = 300;
   auto w = Variable(af::randu(1, 1, n_params, af::dtype::f32), true);
 
   for (int i = 0; i < in.elements(); ++i) {
-    in.array()(i) = (i + 1);
+    in.array()(i) = (i + 1) * 0.01;
   }
   for (int i = 0; i < w.elements(); ++i) {
-    w.array()(i) = (i + 1);
-    // w.array()(i) = weights[i];
+    w.array()(i) = (i + 1) * 0.01;
     // w.array()(i) =
     //     i > n_params - 2 * hidden_size * num_layers - 1 ? 0 : (i + 1);
   }
