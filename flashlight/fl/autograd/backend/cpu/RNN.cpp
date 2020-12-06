@@ -33,6 +33,7 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
     const af::array& weights,
     int hiddenSize,
     int numLayers,
+    int numLayersTotal, // num layers state and weights correspond to
     RnnMode mode,
     dnnl::algorithm activation,
     int numGates,
@@ -109,20 +110,34 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   // hidden biases from one tensor. Order doesn't matter since the arrangement
   // is a black box
   size_t weightsInputSize =
-      numLayers * directionMult * inSize * numGates * hiddenSize;
+      numLayersTotal * directionMult * inSize * numGates * hiddenSize;
   size_t weightsIterSize =
-      numLayers * directionMult * hiddenSize * numGates * hiddenSize;
+      numLayersTotal * directionMult * hiddenSize * numGates * hiddenSize;
 
+  // cuDNN RNN weights, for each layer, are arranged with a chunk of
+  // input-hidden weights for each layer followed by a chunk of hidden-hidden
+  // weights for each layer:
+  // {[layers x [hiddenSize, inputSize]], [layers x  [hiddenSize, hiddenSize]]}
+  // Rearrange this to what oneDNN expects (or will reorder if not optimal),
+  // which is numLayersTotal chunks of two chunks containing input-hidden and
+  // hidden-hidden:
+  // {[layers x [[hiddenSize x inSize], [hiddenSize x hiddenSize]]]}
+  // Note that the loop is over the total number of layers in case we're doing a
+  // single-layer operation where input size and hidden size are different but
+  // we'll call another primitive with the output of that first layer as the
+  // input to the next layers
   auto weightsInputNew = af::array(1, 1, 0, 1);
   auto weightsHiddenNew = af::array(1, 1, 0, 1);
-  for (size_t i = 0; i < numLayers; ++i) {
+  for (size_t i = 0; i < numLayersTotal; ++i) {
     int chunkSize = hiddenSize * (hiddenSize + inSize);
 
+    // Grab input-hidden weights and chunk them together
     int inputWeightsSize = hiddenSize * inSize;
     auto inputWeightsChunk =
         weights(af::seq(chunkSize * i, chunkSize * i + inputWeightsSize - 1));
     weightsInputNew = af::join(2, weightsInputNew, inputWeightsChunk);
 
+    // Grab hidden-hidden weights and chunk them together
     int hiddenWeightsSize = hiddenSize * hiddenSize;
     auto inputHiddenChunk = weights(af::seq(
         chunkSize * i + inputWeightsSize,
@@ -131,8 +146,8 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   }
 
   DevicePtr weightsInputPtr(weightsInputNew);
-  // todo - don't force a format tag - use any and do a reorder based on the
-  // format of the primitive - what it says - like you're supposed to
+  // TODO(jacobkahn): don't force a format tag - use any and do a reorder based
+  // on the format of the primitive - what it says - like you're supposed to
   auto weightsInputMemDesc = dnnl::memory::desc(
       weightsInputDims, dType, dnnl::memory::format_tag::ldigo);
   auto weightsInputMemInit = dnnl::memory(weightsInputMemDesc, dnnlEngine);
@@ -143,7 +158,6 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   auto weightsInputMemRawInit =
       dnnl::memory(weightsInputMemRawDesc, dnnlEngine, weightsInputPtr.get());
 
-  // This char thing is bad and wrong and can't be trusted maybe idk
   DevicePtr weightsHiddenPtr(weightsHiddenNew);
   auto weightsHiddenMemDesc = dnnl::memory::desc(
       weightsHiddenDims, dType, dnnl::memory::format_tag::ldigo);
@@ -162,26 +176,31 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   // bias terms to get a single bias term for oneDNN. The gradients for each
   // term can be computed as one since the gradients with respect to the bias
   // subarrays will simply be half of the computed gradient with oneDNN
-
-  // First, grab a subarray which contains only both bias terms; then add them
-  size_t biasSize = numLayers * directionMult * numGates * hiddenSize;
+  af::array biasCombined;
+  size_t biasSize = numLayersTotal * directionMult * numGates * hiddenSize;
   size_t biasStartOffset = weightsInputSize + weightsIterSize;
-  af::array biasFlat = af::flat(weights)(af::seq(biasStartOffset, af::end));
-  af::print("biasflat", biasFlat);
-  std::cout << "biasflat els " << biasFlat.elements() << " dim4 " << numLayers
-            << ", " << directionMult << ", " << numGates << ", " << hiddenSize
-            << std::endl;
-  // Pull out individual biases and join
-  auto bias1 = biasFlat(af::seq(biasSize));
-  auto bias2 = biasFlat(af::seq(biasSize, af::end));
-  auto bias = af::join(1, bias2, bias1);
-  af::print("bias", bias);
-  auto biasCombined = af::sum(bias, 1);
-  // TODO: generalize me to the right dimensions? Maybe this always works
-  // auto biasCombined =
-  //     weightsFlat(af::seq(biasStartOffset, biasStartOffset + biasSize - 1)) +
-  //     weightsFlat(af::seq(biasStartOffset + biasSize, af::end));
-  af::print("biasCombined", biasCombined);
+  // In vanilla RNN modes, the biases can be simply added:
+  if (mode == RnnMode::RELU || mode == RnnMode::TANH) {
+    int numBiases = 2;
+    // First, grab a subarray which contains only both bias terms; then add them
+    af::array biasFlat = af::flat(weights)(af::seq(biasStartOffset, af::end));
+    // Layout is:
+    // {numLayersTotal x [numBiases x [bias shape]]}
+    for (size_t i = 0; i < numLayersTotal; ++i) {
+      // this will definitely change with LSTM/GRU
+      // int layerStride = (inSize + hiddenSize) * numBiases; //
+      // The number of bias terms in the tensor per-layer
+      int layerStride = biasSize / numLayersTotal * numBiases;
+      auto biases1 = biasFlat(af::seq(
+          layerStride * i, layerStride * i + layerStride / numBiases - 1));
+      auto biases2 = biasFlat(af::seq(
+          layerStride * i + layerStride / numBiases,
+          layerStride * (i + 1) - 1));
+      auto layerBiasCombined = biases1 + biases2;
+      biasCombined = af::join(0, biasCombined, layerBiasCombined);
+    }
+  }
+
   DevicePtr biasPtr(biasCombined);
   auto biasMemDesc =
       dnnl::memory::desc(biasDims, dType, dnnl::memory::format_tag::ldgo);
@@ -229,6 +248,7 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
         dnnl::vanilla_rnn_forward::primitive_desc(vanilla, dnnlEngine);
     network.push_back(dnnl::vanilla_rnn_forward(vanillaPd));
     workspace = dnnl::memory(vanillaPd.workspace_desc(), dnnlEngine);
+
   } else if (mode == RnnMode::LSTM) {
     // LSTM-only
     // input cell state
@@ -303,7 +323,7 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   Variable hyv(hy, false);
   Variable cyv(cy, false);
   return std::make_tuple(yv, hyv, cyv);
-} // namespace
+}
 
 } // namespace
 
@@ -369,6 +389,7 @@ std::tuple<Variable, Variable, Variable> rnn(
         weights,
         hiddenSize,
         numLayers,
+        numLayers,
         mode,
         activation,
         numGates,
@@ -394,6 +415,7 @@ std::tuple<Variable, Variable, Variable> rnn(
         weights /* completely wrong, fixme... */,
         hiddenSize,
         1,
+        numLayers, // total number of layers
         mode,
         activation,
         numGates,
@@ -418,6 +440,7 @@ std::tuple<Variable, Variable, Variable> rnn(
         weights /* totally wrong */,
         hiddenSize,
         numLayers - 1, // layers [2..N]
+        numLayers,
         mode,
         activation,
         numGates,
@@ -426,6 +449,7 @@ std::tuple<Variable, Variable, Variable> rnn(
         kind,
         dropout);
 
+    // TODO: operate on arrays, not variables
     Variable hiddenOut =
         Variable(af::join(3, hiddenOutL1.array(), hiddenOutL2N.array()), false);
     Variable cellOut =
