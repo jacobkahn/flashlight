@@ -382,38 +382,26 @@ TEST_F(ModuleTestF16, PoolingFwdF16) {
 
 TEST(ModuleTest, RNNFwd) {
   auto mode = RnnMode::RELU;
-  int num_layers = 1;
-  int hidden_size = 1;
-  int input_size = 1;
-  int batch_size = 1;
-  int seq_length = 2;
+  int num_layers = 2;
+  int hidden_size = 3;
+  int input_size = 4;
+  int batch_size = 5;
+  int seq_length = 6;
 
   auto in = Variable(
       af::randu(input_size, batch_size, seq_length, af::dtype::f32), true);
-  size_t n_params = 4;
-
-  std::vector<float> weights = {1.0, 1.0,  1.0,  2.0,  2.0,   2.0,   0.0,
-                                0.0, 0.0,  0.0,  0.0,  0.0,   0.0,   0.0,
-                                0.0, 10.0, 15.0, 20.0, 110.0, 105.0, 100.0};
-  // 1.0, 1.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 100.0, 100.0};
+  size_t n_params = 51;
   auto w = Variable(af::randu(1, 1, n_params, af::dtype::f32), true);
   for (int i = 0; i < in.elements(); ++i) {
-    in.array()(i) = (i + 1);
+    in.array()(i) = (i + 1) * 0.01;
   }
   for (int i = 0; i < w.elements(); ++i) {
-    w.array()(i) = (i + 1);
-    // w.array()(i) = weights[i];
+    w.array()(i) = (i + 1) * 0.01;
   }
-
-  af::print("in", in.array());
-  af::print("w", w.array());
-
   auto rnn = RNN(input_size, hidden_size, num_layers, mode);
   rnn.setParams(w, 0);
 
   auto out = rnn(in);
-  af::print("out", out.array());
-
   af::dim4 expected_dims(3, 5, 6);
   ASSERT_EQ(out.dims(), expected_dims);
   // Calculated from Lua Torch Cudnn implementation
@@ -433,7 +421,6 @@ TEST(ModuleTest, RNNFwd) {
 
   auto expected_outVar =
       Variable(af::array(expected_dims, expected_out.data()), true);
-
   ASSERT_TRUE(allClose(out, expected_outVar, 1E-4));
 }
 
