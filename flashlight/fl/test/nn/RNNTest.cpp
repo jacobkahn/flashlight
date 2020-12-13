@@ -61,23 +61,24 @@ TEST(ModuleTest, RNNFwd) {
 
 TEST(ModuleTest, LSTMFwd) {
   auto mode = RnnMode::LSTM;
-  int num_layers = 1;
-  int hidden_size = 1;
-  int input_size = 1;
-  int batch_size = 1;
-  int seq_length = 1;
+  int num_layers = 4;
+  int hidden_size = 5;
+  int input_size = 3;
+  int batch_size = 2;
+  int seq_length = 2;
 
   auto in = Variable(
       af::randu(input_size, batch_size, seq_length, af::dtype::f32), true);
 
-  size_t n_params = 16;
+  size_t n_params = 920;
   auto w = Variable(af::randu(1, 1, n_params, af::dtype::f32), true);
 
   for (int i = 0; i < in.elements(); ++i) {
-    in.array()(i) = (i + 1) * 0.1;
+    in.array()(i) = (i + 1) * 0.01;
   }
   for (int i = 0; i < w.elements(); ++i) {
-    w.array()(i) = i > 7 ? 0 : (i + 1) * 0.1;
+    // w.array()(i) = i > 7 ? 0 : (i + 1) * 0.1;
+    w.array()(i) = (i + 1) * 0.01;
     // w.array()(i) =
     //     i > n_params - 2 * hidden_size * num_layers - 1 ? 0 : (i + 1);
   }

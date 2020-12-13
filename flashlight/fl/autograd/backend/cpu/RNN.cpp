@@ -83,7 +83,7 @@ ParsedWeightsAndBias parseWeights(
   for (size_t i = 0; i < numWeightsLayers; ++i) {
     // number of input/hidden weights
     // TODO: Will change for bidirectional, GRU and LSTM (different numGates)
-    int chunkSize = hiddenSize * hiddenSize;
+    int chunkSize = hiddenSize * hiddenSize * numGates;
     // weights per layer
     int layerChunkSize = chunkSize + chunkSize;
 
@@ -93,7 +93,6 @@ ParsedWeightsAndBias parseWeights(
     weightsInput = af::join(2, weightsInput, inputWeightsChunk);
 
     // Grab hidden-hidden weights and chunk them together
-    int hiddenWeightsSize = hiddenSize * hiddenSize;
     auto inputHiddenChunk = weightsFlatOffset(af::seq(
         layerChunkSize * i + chunkSize,
         layerChunkSize * i + chunkSize + chunkSize - 1));
@@ -116,7 +115,6 @@ ParsedWeightsAndBias parseWeights(
   int numBiases = 2;
   // First, grab a subarray which contains only both bias terms; then add them
   af::array biasFlat = weightsFlat(af::seq(biasStartOffset, af::end));
-  af::print("biasFlat", biasFlat);
   // Layout is:
   // {numLayers x [numBiases x [bias shape]]}
   for (size_t i = 0; i < numLayers; ++i) {
@@ -134,10 +132,19 @@ ParsedWeightsAndBias parseWeights(
 
   if (firstLayerDifferent) {
     out.bias1L = bias(af::seq(biasSize / numLayers));
-    // bias for the second --> last layer
-    bias = bias(af::seq(biasSize / numLayers, af::end));
+    if (numLayers > 1) {
+      // bias for the second --> last layer
+      bias = bias(af::seq(biasSize / numLayers, af::end));
+    }
   }
   out.bias = bias;
+
+  // Case for a single layer of different in/hidden size
+  if (firstLayerDifferent && numLayers == 1) {
+    out.weightsInput = out.weightsInput1L;
+    out.weightsHidden = out.weightsHidden1L;
+    out.bias = out.bias1L;
+  }
 
   return out;
 }
@@ -191,7 +198,7 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   auto hy = af::array(hiddenSize, batchSize, totalLayers, input.type());
   af::array cy;
   if (mode == RnnMode::LSTM) {
-    auto cy = af::array(hy.dims(), input.type());
+    cy = af::array(hy.dims(), input.type());
   }
 
   // Memory for forward
@@ -215,7 +222,6 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
     hiddenInMemInit =
         dnnl::memory(hiddenInMemDesc, dnnlEngine, hiddenInPtr.get());
   } else {
-    std::cout << "Hidden state empty!" << std::endl;
     hiddenInMemDesc = dnnl::memory::desc();
     hiddenInMemInit = dnnl::memory();
   }
@@ -432,7 +438,6 @@ std::tuple<Variable, Variable, Variable> rnn(
   // is now the hidden size, the primitive can fuse computation for
   // arbitrarily-many layers.
   if (inputV.dims(0) == hiddenSize || numLayers == 1) {
-    std::cout << "------ In single kernel case" << std::endl;
     // Input and hidden size are the same, or we only have one layer, which
     // means we can call the impl as is and parse weights "normally"
     // TODO: gradFunc will be a mightmare
@@ -453,7 +458,6 @@ std::tuple<Variable, Variable, Variable> rnn(
         kind,
         dropout);
   } else {
-    std::cout << "------ In multi kernel case" << std::endl;
     // We require more than one layer with different input and hidden states -
     // see the above.
     // int firstLayerWeightsSize
@@ -489,7 +493,7 @@ std::tuple<Variable, Variable, Variable> rnn(
     std::tie(out, hiddenOutL2N, cellOutL2N) = rnnImpl(
         outL1.array(), // fixme
         hiddenState(af::span, af::span, af::seq(1, af::end)),
-        cellState(af::span, af::span, af::seq(0, cellState.dims(2))),
+        cellState(af::span, af::span, af::seq(1, af::end)),
         parsedWeights.weightsInput,
         parsedWeights.weightsHidden,
         parsedWeights.bias,
@@ -505,9 +509,9 @@ std::tuple<Variable, Variable, Variable> rnn(
 
     // TODO: operate on arrays, not variables
     Variable hiddenOut =
-        Variable(af::join(3, hiddenOutL1.array(), hiddenOutL2N.array()), false);
+        Variable(af::join(2, hiddenOutL1.array(), hiddenOutL2N.array()), false);
     Variable cellOut =
-        Variable(af::join(3, cellOutL1.array(), cellOutL2N.array()), false);
+        Variable(af::join(2, cellOutL1.array(), cellOutL2N.array()), false);
     return std::make_tuple(out, hiddenOut, cellOut);
   }
 }
