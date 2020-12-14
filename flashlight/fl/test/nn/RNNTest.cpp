@@ -117,8 +117,8 @@ TEST(ModuleTest, LSTMFwd) {
 
 TEST(ModuleTest, GRUFwd) {
   auto mode = RnnMode::GRU;
-  int num_layers = 3;
-  int hidden_size = 3;
+  int num_layers = 4;
+  int hidden_size = 5;
   int input_size = 3;
   int batch_size = 2;
   int seq_length = 2;
@@ -126,15 +126,15 @@ TEST(ModuleTest, GRUFwd) {
   auto in = Variable(
       af::randu(input_size, batch_size, seq_length, af::dtype::f32), true);
 
-  size_t n_params = 216;
+  size_t n_params = 690;
   auto w = Variable(af::randu(1, 1, n_params, af::dtype::f32), true);
 
   for (int i = 0; i < in.elements(); ++i) {
-    in.array()(i) = (i + 1) * 0.01;
+    in.array()(i) = (i + 1) * 0.001;
   }
   for (int i = 0; i < w.elements(); ++i) {
-    // w.array()(i) = i > 10 ? 0 : (i + 1) * 0.1;
-    w.array()(i) = (i + 1) * 0.01;
+    // w.array()(i) = i > 8 ? 0 : (i + 1) * 0.1;
+    w.array()(i) = (i + 1) * 0.001;
     // w.array()(i) =
     //     i > n_params - 2 * hidden_size * num_layers - 1 ? 0 : (i + 1);
   }
