@@ -452,6 +452,13 @@ std::tuple<Variable, Variable, Variable> rnn(
     RnnMode mode,
     bool bidirectional,
     float dropout) {
+  if (dropout > 0.0) {
+    throw std::invalid_argument("dnnl rnn: dropout > 0.0 unsupported");
+  }
+  if (bidirectional) {
+    throw std::invalid_argument("dnnl rnn: bidirectional not yet supported");
+  }
+
   // Constants
   auto direction = bidirectional
       ? dnnl::rnn_direction::bidirectional_concat
