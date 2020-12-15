@@ -44,8 +44,6 @@ af::array reorderLbrGruWeights(int d1, int d2, const af::array weights) {
       weightsFlat(af::seq(2 * weightsSize, af::end)));
 }
 
-af::array reorderLbrGruBias(af::array bias) {}
-
 ParsedWeightsAndBias parseWeights(
     const af::array& weights,
     RnnMode mode,
@@ -61,9 +59,11 @@ ParsedWeightsAndBias parseWeights(
   // layers, else all but the first layer
   size_t weightsInputSize1L = directionMult * inSize * numGates * hiddenSize;
   size_t weightsHiddenSize = directionMult * hiddenSize * numGates * hiddenSize;
-  size_t weightsInputSize = weightsHiddenSize;
+  size_t weightsInputSize =
+      directionMult * directionMult * hiddenSize * numGates * hiddenSize;
+  ;
   int lbrGruBias = mode == RnnMode::GRU ? 1 : 0;
-  size_t biasSize =
+  size_t totalBiasSize =
       numLayers * directionMult * (numGates + lbrGruBias) * hiddenSize;
 
   bool firstLayerDifferent = inSize != hiddenSize;
@@ -103,30 +103,37 @@ ParsedWeightsAndBias parseWeights(
   auto weightsInput = af::array(0, weights.type());
   auto weightsHidden = af::array(0, weights.type());
   af::array weightsFlatOffset = weightsFlat(af::seq(weightsOffset, af::end));
+  std::cout << "DirectionMult " << directionMult << std::endl;
   // Specifically ignore the first layer's weights, so inSize == hiddenSize
   for (size_t i = 0; i < numWeightsLayers; ++i) {
-    // number of input/hidden weights
-    // TODO: Will change for bidirectional, GRU and LSTM (different numGates)
-    int chunkSize = hiddenSize * hiddenSize * numGates;
-    // weights per layer
-    int layerChunkSize = chunkSize + chunkSize;
+    // Layer dimension outside of direction dimension
+    for (size_t d = 0; d < directionMult; ++d) {
+      // number of input/hidden weights
+      // TODO: Will change for bidirectional, GRU and LSTM (different numGates)
+      int chunkSize = hiddenSize * hiddenSize * numGates;
+      // weights per layer
+      int layerChunkSize = chunkSize + chunkSize;
 
-    // Grab input-hidden weights and chunk them together
-    auto inputWeightsChunk = weightsFlatOffset(
-        af::seq(layerChunkSize * i, layerChunkSize * i + chunkSize - 1));
-    // Grab hidden-hidden weights and chunk them together
-    auto inputHiddenChunk = weightsFlatOffset(af::seq(
-        layerChunkSize * i + chunkSize,
-        layerChunkSize * i + chunkSize + chunkSize - 1));
+      // Grab input-hidden weights and chunk them together
+      auto inputWeightsChunk = weightsFlatOffset(af::seq(
+          layerChunkSize * (i + d),
+          layerChunkSize * (i + d) + chunkSize * directionMult - 1));
+      // Grab hidden-hidden weights and chunk them together
+      auto inputHiddenChunk = weightsFlatOffset(af::seq(
+          layerChunkSize * (i + d) + chunkSize,
+          layerChunkSize * (i + d) + chunkSize + chunkSize - 1));
 
-    if (mode == RnnMode::GRU) {
-      inputWeightsChunk =
-          reorderLbrGruWeights(hiddenSize, hiddenSize, inputWeightsChunk);
-      inputHiddenChunk =
-          reorderLbrGruWeights(hiddenSize, hiddenSize, inputHiddenChunk);
+      if (mode == RnnMode::GRU) {
+        inputWeightsChunk =
+            reorderLbrGruWeights(hiddenSize, hiddenSize, inputWeightsChunk);
+        inputHiddenChunk =
+            reorderLbrGruWeights(hiddenSize, hiddenSize, inputHiddenChunk);
+      }
+      weightsInput = af::join(2, weightsInput, inputWeightsChunk);
+      weightsHidden = af::join(2, weightsHidden, inputHiddenChunk);
+      // af::print("weightsInput", weightsInput);
+      // af::print("weightshidden", weightsHidden);
     }
-    weightsInput = af::join(2, weightsInput, inputWeightsChunk);
-    weightsHidden = af::join(2, weightsHidden, inputHiddenChunk);
   }
   out.weightsInput = weightsInput;
   out.weightsHidden = weightsHidden;
@@ -148,54 +155,63 @@ ParsedWeightsAndBias parseWeights(
   // Layout is:
   // {numLayers x [numBiases x [bias shape]]}
   for (size_t i = 0; i < numLayers; ++i) {
-    if (mode == RnnMode::GRU) {
-      int lbrGruChunkSize = hiddenSize * 6;
-      // In the case of the LBR GRU, there's an extra bias term which shouldn't
-      // be combined with the first two pairs of biases. Six chunks total.
-      // cuDNN --> oneDNN transformation for ordering:
-      // r1, u1, o, r2, u2, u' --> u1 + u2, r1 + r2, o, u'
-      int base = i * lbrGruChunkSize;
-      // The sum of the following tensors yields the correct bias
-      // u1, r1, o, u'
-      auto biases1 = af::join(
-          0,
-          // u1 -- [1, 2]
-          biasFlat(af::seq(base + hiddenSize * 1, base + hiddenSize * 2 - 1)),
-          // r1 -- [0, 1]
-          biasFlat(af::seq(base + hiddenSize * 0, base + hiddenSize * 1 - 1)),
-          // o -- [2, 3]
-          biasFlat(af::seq(base + hiddenSize * 2, base + hiddenSize * 3 - 1)),
-          // 'u -- [5, 6]
-          biasFlat(af::seq(base + hiddenSize * 5, base + hiddenSize * 6 - 1)));
-      // u2, r2, 0, 0
-      auto biases2 = af::join(
-          0,
-          // u2 -- [4, 5]
-          biasFlat(af::seq(base + hiddenSize * 4, base + hiddenSize * 5 - 1)),
-          // r2 -- [3, 4]
-          biasFlat(af::seq(base + hiddenSize * 3, base + hiddenSize * 4 - 1)),
-          // zeroes to add to o and u'
-          af::constant(0.0, hiddenSize * 2, biasFlat.type()));
-      auto layerBiasCombined = biases1 + biases2;
-      bias = af::join(0, bias, layerBiasCombined);
-    } else {
-      // The number of bias terms in the tensor per-layer
-      int layerStride = biasSize / numLayers * numBiases;
-      auto biases1 = biasFlat(af::seq(
-          layerStride * i, layerStride * i + layerStride / numBiases - 1));
-      auto biases2 = biasFlat(af::seq(
-          layerStride * i + layerStride / numBiases,
-          layerStride * (i + 1) - 1));
-      auto layerBiasCombined = biases1 + biases2;
-      bias = af::join(0, bias, layerBiasCombined);
+    for (int d = 0; d < directionMult; ++d) {
+      if (mode == RnnMode::GRU) {
+        int lbrGruChunkSize = hiddenSize * 6;
+        // In the case of the LBR GRU, there's an extra bias term which
+        // shouldn't be combined with the first two pairs of biases. Six chunks
+        // total. cuDNN --> oneDNN transformation for ordering: r1, u1, o, r2,
+        // u2, u' --> u1 + u2, r1 + r2, o, u'
+        int base = (i + d) * lbrGruChunkSize;
+        // The sum of the following tensors yields the correct bias
+        // u1, r1, o, u'
+        auto biases1 = af::join(
+            0,
+            // u1 -- [1, 2]
+            biasFlat(af::seq(base + hiddenSize * 1, base + hiddenSize * 2 - 1)),
+            // r1 -- [0, 1]
+            biasFlat(af::seq(base + hiddenSize * 0, base + hiddenSize * 1 - 1)),
+            // o -- [2, 3]
+            biasFlat(af::seq(base + hiddenSize * 2, base + hiddenSize * 3 - 1)),
+            // 'u -- [5, 6]
+            biasFlat(
+                af::seq(base + hiddenSize * 5, base + hiddenSize * 6 - 1)));
+        // u2, r2, 0, 0
+        auto biases2 = af::join(
+            0,
+            // u2 -- [4, 5]
+            biasFlat(af::seq(base + hiddenSize * 4, base + hiddenSize * 5 - 1)),
+            // r2 -- [3, 4]
+            biasFlat(af::seq(base + hiddenSize * 3, base + hiddenSize * 4 - 1)),
+            // zeroes to add to o and u'
+            af::constant(0.0, hiddenSize * 2, biasFlat.type()));
+        auto layerBiasCombined = biases1 + biases2;
+        bias = af::join(0, bias, layerBiasCombined);
+      } else {
+        // The number of bias terms in the tensor per-layer
+        int layerStride = totalBiasSize / numLayers * numBiases;
+        int biasSize = hiddenSize * numGates;
+        af::print("biasFlat", biasFlat);
+        std::cout << "layerStride " << layerStride << std::endl;
+        auto biases1 = biasFlat(af::seq(
+            layerStride * i + numBiases * biasSize * d,
+            layerStride * i + numBiases * biasSize * d + biasSize - 1));
+        auto biases2 = biasFlat(af::seq(
+            layerStride * i + numBiases * biasSize * d + biasSize,
+            layerStride * i + numBiases * biasSize * d + 2 * biasSize - 1));
+        af::print("b1", biases1);
+        af::print("b2", biases2);
+        auto layerBiasCombined = biases1 + biases2;
+        bias = af::join(0, bias, layerBiasCombined);
+      }
     }
   }
 
   if (firstLayerDifferent) {
-    out.bias1L = bias(af::seq(biasSize / numLayers));
+    out.bias1L = bias(af::seq(totalBiasSize / numLayers));
     if (numLayers > 1) {
       // bias for the second --> last layer
-      bias = bias(af::seq(biasSize / numLayers, af::end));
+      bias = bias(af::seq(totalBiasSize / numLayers, af::end));
     }
   }
   out.bias = bias;
@@ -232,6 +248,9 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
     int directionMult,
     dnnl::prop_kind kind,
     float dropout) {
+  if (dropout > 0.0) {
+    throw std::invalid_argument("dnnl rnnImpl: dropout > 0.0 unsupported");
+  }
   auto dnnlEngine = detail::DnnlEngine::getInstance().getEngine();
 
   // Dimensions
@@ -244,8 +263,8 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
   auto dType = detail::dnnlMapToType(input.type());
   int totalLayers = numLayers * directionMult;
   int outSize = hiddenSize * directionMult;
-  dnnl::memory::dims hDims = {totalLayers, 1, batchSize, hiddenSize};
-  dnnl::memory::dims cDims = {totalLayers, 1, batchSize, hiddenSize};
+  dnnl::memory::dims hDims = {numLayers, directionMult, batchSize, hiddenSize};
+  dnnl::memory::dims cDims = {numLayers, directionMult, batchSize, hiddenSize};
   int extraBias = mode == RnnMode::GRU ? 1 : 0; // for LBR GRU
   dnnl::memory::dims biasDims = {
       numLayers, directionMult, numGates + extraBias, hiddenSize};
