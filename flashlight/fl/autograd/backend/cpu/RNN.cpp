@@ -210,11 +210,8 @@ ParsedWeightsAndBias parseWeights(
   return out;
 }
 
-// TODO, implement RNN, also check to ensure there will appropriate checks to
-// guard the use of half precision in case CPU implementation doesn't support
-// it.
 /*
- * Does forward for a single RNN primitive
+ * Does forward for a single dnnl RNN primitive
  */
 std::tuple<Variable, Variable, Variable> rnnImpl(
     const af::array& input,
@@ -405,12 +402,11 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
     auto lstmPd = dnnl::lstm_forward::primitive_desc(lstm, dnnlEngine);
     network.push_back(dnnl::lstm_forward(lstmPd));
     workspace = dnnl::memory(lstmPd.workspace_desc(), dnnlEngine);
-    // TODO: add cell memory arguments to fwd Args
     rnnFwdArgs.insert({DNNL_ARG_SRC_ITER_C, cellInMemInit});
     rnnFwdArgs.insert({DNNL_ARG_DST_ITER_C, cellOutMemInit});
 
   } else if (mode == RnnMode::GRU) {
-    // Use linear-before-reset so we can have parity with cuDNN
+    // Use a linear-before-reset GRU so we can have parity with cuDNN
     auto gru = dnnl::lbr_gru_forward::desc(
         kind,
         direction,
@@ -426,17 +422,17 @@ std::tuple<Variable, Variable, Variable> rnnImpl(
     workspace = dnnl::memory(gruPd.workspace_desc(), dnnlEngine);
   }
   rnnFwdArgs.insert({DNNL_ARG_WORKSPACE, workspace});
-
   fwdArgs.push_back(rnnFwdArgs);
 
   detail::executeNetwork(network, fwdArgs);
 
-  // Variable yv(y, {dummy}, dyGradFunc);
-  // Variable hyv(hy, {dummy}, dhyGradFunc);
-  // Variable cyv(cy, {dummy}, dcyGradFunc);
-  Variable yv(y, false);
-  Variable hyv(hy, false);
-  Variable cyv(cy, false);
+  auto gradFuncUnsupported = [](std::vector<Variable>&, const Variable&) {
+    throw std::runtime_error(
+        "dnnl rnn: Gradient computation not yet supported");
+  };
+  Variable yv(y, {}, gradFuncUnsupported);
+  Variable hyv(hy, {}, gradFuncUnsupported);
+  Variable cyv(cy, {}, gradFuncUnsupported);
   return std::make_tuple(yv, hyv, cyv);
 }
 
@@ -509,7 +505,6 @@ std::tuple<Variable, Variable, Variable> rnn(
   if (inputV.dims(0) == hiddenSize || numLayers == 1) {
     // Input and hidden size are the same, or we only have one layer, which
     // means we can call the impl as is and parse weights "normally"
-    // TODO: gradFunc will be a mightmare
     return rnnImpl(
         input,
         hiddenState,
@@ -529,8 +524,6 @@ std::tuple<Variable, Variable, Variable> rnn(
   } else {
     // We require more than one layer with different input and hidden states -
     // see the above.
-    // int firstLayerWeightsSize
-
     // TODO: change this to array later -- rnnImpl should return arrays
     Variable outL1; // input to layers [2..N]
     Variable hiddenOutL1;
@@ -557,7 +550,6 @@ std::tuple<Variable, Variable, Variable> rnn(
     Variable out;
     Variable hiddenOutL2N;
     Variable cellOutL2N;
-
     // Seek  past the first layer's hidden/cell state, weights, and bias
     std::tie(out, hiddenOutL2N, cellOutL2N) = rnnImpl(
         outL1.array(), // fixme
@@ -576,7 +568,6 @@ std::tuple<Variable, Variable, Variable> rnn(
         kind,
         dropout);
 
-    // TODO: operate on arrays, not variables
     Variable hiddenOut =
         Variable(af::join(2, hiddenOutL1.array(), hiddenOutL2N.array()), false);
     Variable cellOut =
