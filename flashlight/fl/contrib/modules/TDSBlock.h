@@ -46,7 +46,7 @@ class TDSBlock : public Container {
       normalization is performed on the [W, C] axes with scalar affine
       transformation.
    */
-  explicit TDSBlock(
+  TDSBlock(
       int channels,
       int kernelSize,
       int width,

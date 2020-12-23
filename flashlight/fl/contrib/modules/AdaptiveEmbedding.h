@@ -45,7 +45,7 @@ class AdaptiveEmbedding : public UnaryModule {
    * @param divValue is the scaling factor for tail groups dimention reduction
    * (see paper https://arxiv.org/pdf/1809.10853.pdf for details).
    */
-  explicit AdaptiveEmbedding(
+  AdaptiveEmbedding(
       int embeddingDim,
       std::vector<int> cutoff,
       float divValue = 4);

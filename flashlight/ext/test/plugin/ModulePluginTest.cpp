@@ -9,7 +9,7 @@
 #include <arrayfire.h>
 #include <gtest/gtest.h>
 
-#include "flashlight/ext/common/ModulePlugin.h"
+#include "flashlight/ext/plugin/ModulePlugin.h"
 #include "flashlight/fl/flashlight.h"
 #include "flashlight/lib/common/System.h"
 
@@ -23,6 +23,7 @@ std::string pluginDir = "";
 
 TEST(ModulePluginTest, ModulePlugin) {
   const std::string libfile =
+      // fl::lib::pathsConcat(pluginDir, "PluginTestModule.so");
       fl::lib::pathsConcat(pluginDir, "test_module_plugin.so");
 
   const int ninput = 80;

@@ -92,7 +92,7 @@ class Transformer : public Container {
       useMask_,
       preLN_)
 
-  Transformer();
+  Transformer() = default;
 };
 
 } // namespace fl

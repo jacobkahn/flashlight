@@ -19,7 +19,7 @@ Plugin::Plugin(const std::string& name) : name_(name) {
   handle_ = dlopen(name.c_str(), RTLD_LAZY);
   if (!handle_) {
     std::string err = dlerror();
-    throw std::runtime_error("unable to load library <" + name + ">: " + err);
+    throw std::runtime_error("Plugin: unable to load library <" + name + ">: " + err);
   }
 }
 

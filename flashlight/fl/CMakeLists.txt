@@ -17,28 +17,6 @@ if (FL_BUILD_DISTRIBUTED)
   endif ()
 endif ()
 
-# -------------------------------- Components --------------------------------
-
-# Build and link resources from `flashlight/contrib`.
-cmake_dependent_option(FL_BUILD_CONTRIB
-  "Build and link additional flashlight contrib resources." ON
-  "FL_BUILD_CORE" OFF)
-if (FL_BUILD_CONTRIB)
-  message(STATUS "Will build flashlight contrib assets.")
-  include(${FL_CORE_COMPONENT_SRC_DIR}/contrib/CMakeLists.txt)
-endif()
-
-# Build and link resources from `flashlight/experimental`.
-cmake_dependent_option(FL_BUILD_EXPERIMENTAL
-  "Build and link additional internal flashlight experimental resources." ON
-  "FL_BUILD_CORE" OFF)
-if (FL_BUILD_EXPERIMENTAL)
-  message(STATUS "Will build flashlight experimental assets.")
-  set(FL_EXPERIMENTAL_ROOT_PATH
-    ${FL_CORE_COMPONENT_SRC_DIR}/experimental)
-  include(${FL_EXPERIMENTAL_ROOT_PATH}/CMakeLists.txt)
-endif()
-
 # Internal includes are implicitly defined as <flashlight...>
 target_include_directories(
   flashlight
@@ -71,6 +49,26 @@ include(${FL_CORE_COMPONENT_SRC_DIR}/nn/CMakeLists.txt)
 
 # Optim
 include(${FL_CORE_COMPONENT_SRC_DIR}/optim/CMakeLists.txt)
+
+# Contrib
+cmake_dependent_option(FL_BUILD_CONTRIB
+  "Build and link additional flashlight contrib resources." ON
+  "FL_BUILD_CORE" OFF)
+if (FL_BUILD_CONTRIB)
+  message(STATUS "Will build flashlight contrib assets.")
+  include(${FL_CORE_COMPONENT_SRC_DIR}/contrib/CMakeLists.txt)
+endif()
+
+# Experimental
+cmake_dependent_option(FL_BUILD_EXPERIMENTAL
+  "Build and link additional internal flashlight experimental resources." ON
+  "FL_BUILD_CORE" OFF)
+if (FL_BUILD_EXPERIMENTAL)
+  message(STATUS "Will build flashlight experimental assets.")
+  set(FL_EXPERIMENTAL_ROOT_PATH
+    ${FL_CORE_COMPONENT_SRC_DIR}/experimental)
+  include(${FL_EXPERIMENTAL_ROOT_PATH}/CMakeLists.txt)
+endif()
 
 # --------------------------- Configure Examples/Tests ---------------------------
 
