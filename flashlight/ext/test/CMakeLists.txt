@@ -39,3 +39,10 @@ if (FL_EXT_BUILD_HALIDE)
     NAME HalideTestPipeline
     LINK_TO HalideTest)
 endif()
+if (FL_EXT_BUILD_SPUTNIK)
+  build_test(
+    SRC ${DIR}/integrations/SputnikTest.cpp
+    LIBS ${LIBS}
+    PREPROC
+    )
+endif()
