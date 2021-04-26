@@ -12,8 +12,8 @@ target_link_libraries(
   PUBLIC
   sputnik::sputnik)
 
-# target_sources(
-#   flashlight
-#   PRIVATE
-#   ${CMAKE_CURRENT_LIST_DIR}/SputnikInterface.cpp
-#   )
+target_sources(
+  flashlight
+  PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/SputnikInterface.cpp
+  )

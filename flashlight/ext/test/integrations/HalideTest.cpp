@@ -153,6 +153,7 @@ TEST(HalideTest, SimpleJITHalidePipeline) {
 }
 
 int main(int argc, char** argv) {
+  fl::init();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
