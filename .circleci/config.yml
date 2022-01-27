@@ -11,6 +11,7 @@ gpu: &gpu
     image: ubuntu-2004-cuda-11.4:202110-01
   resource_class: gpu.nvidia.small
 
+
 commands:
   ############################### Docker Commands ###############################
   # Docker commands
