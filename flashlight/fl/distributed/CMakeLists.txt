@@ -11,20 +11,19 @@ if (APPLE OR NOT FL_BUILD_DISTRIBUTED)
   set(_build_nccl_default FALSE)
   # no gloo on macOS (https://github.com/facebookincubator/gloo/issues/262)
   set(_build_gloo_default FALSE)
+  # don't require MPI if distributed backends are off
+  set(_build_mpi_default  FALSE)
 else()
   # Default building distributed backends to ON if using corresponding compute
   # environment is enabled
   set(_build_nccl_default ${FL_USE_CUDA})
   set(_build_gloo_default ${FL_USE_CPU})
+  set(_build_mpi_default  ${FL_USE_MPI})
 endif()
 
 option(FL_USE_NCCL "Build with NCCL for distributed computation" ${_build_nccl_default})
 option(FL_USE_GLOO "Build with Gloo for distributed computation" ${_build_gloo_default})
-
-# TODO: relax this
-if (FL_USE_NCCL AND FL_USE_GLOO)
-  message(STATUS "Cannot build multiple distributed backends simultaneously")
-endif()
+option(FL_USE_MPI "Build with MPI support for distributed computation" ${_build_mpi_default})
 
 # If no distributed backend is enabled, don't build distributed (build stub)
 if (FL_BUILD_DISTRIBUTED AND NOT (FL_USE_NCCL OR FL_USE_GLOO))
@@ -55,65 +54,30 @@ target_sources(
   ${CMAKE_CURRENT_LIST_DIR}/FileStore.cpp
   ${CMAKE_CURRENT_LIST_DIR}/reducers/InlineReducer.cpp
   ${CMAKE_CURRENT_LIST_DIR}/reducers/CoalescingReducer.cpp
-  )
+)
 
 # Builds the dependency-free version of the distributed backend
 if (FL_DISTRIBUTED_STUB)
   # Forces dispatch only to the stub backend
   # TODO: relax this when tensor-based dispatch is available
-  target_sources(
-    flashlight
-    PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/backend/stub/DistributedBackend.cpp
-    )
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/stub/CMakeLists.txt)
 endif()
 
-# ----------------------------- Dependencies -----------------------------
-# MPI is required for any distributed support
-# TODO: make this and the rendezvous impl configurable
-if (FL_BUILD_DISTRIBUTED)
-  find_package(MPI REQUIRED)
-  target_link_libraries(flashlight PUBLIC MPI::MPI_CXX)
-endif ()
+# ----------------------------- Backends -----------------------------
+# TODO: there needs to be some provenance of rendezvous support to make
+# sure that we can always have a rendezvous implementation.
+# There's no point in building any distributed backend if no
+# implementation that's capable of rendezvous is present since we can't
+# initialize anything.
+
+if (FL_USE_MPI)
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/mpi/CMakeLists.txt)
+endif()  
 
 if (FL_USE_GLOO)
-  find_package(Gloo CONFIG)
-  if (NOT Gloo_FOUND)
-    if (NOT FL_BUILD_STANDALONE)
-      message(FATAL_ERROR "Required dependency Gloo not found")
-    endif()
-    message(STATUS "Gloo not found - downloading and building from source")
-    include(${PROJECT_SOURCE_DIR}/cmake/BuildGloo.cmake)
-  endif()
-
-  target_sources(
-    flashlight
-    PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/backend/cpu/DistributedBackend.cpp
-    )
-
-  target_link_libraries(flashlight PRIVATE gloo)
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/gloo/CMakeLists.txt)
 endif()
 
 if (FL_USE_NCCL)
-  find_package(NCCL REQUIRED)
-  if (NCCL_FOUND)
-    message(STATUS "NCCL found: (include: ${NCCL_INCLUDE_DIRS} lib: ${NCCL_LIBRARIES}")
-    setup_install_find_module(${PROJECT_SOURCE_DIR}/cmake/FindNCCL.cmake)
-  endif()
-
-  target_sources(
-    flashlight
-    PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/backend/cuda/DistributedBackend.cpp
-    )
-
-  target_link_libraries(flashlight PRIVATE ${NCCL_LIBRARIES})
-  target_include_directories(flashlight PRIVATE ${NCCL_INCLUDE_DIRS})
-
-  target_compile_definitions(
-    flashlight
-    PUBLIC
-    "-DNO_NCCL_COMM_DESTROY_HANDLE"
-    )
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/nccl/CMakeLists.txt)
 endif()

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -23,7 +24,7 @@ namespace fl {
 
 /**
  * Initialize the distributed environment. Note that `worldSize`, `worldRank`
- * are ignored if `DistributedInit::MPI` is used.
+ * are ignored if `DistributedInit::MPI` is used as the rendezvousMethod.
  *
  * @param initMethod Initialization method used for setting up the rendezvous
  * @param worldSize Total number of processes in the communication group
@@ -31,9 +32,10 @@ namespace fl {
  * @param params Additional parameters (if any) needed for initialization
  */
 FL_API void distributedInit(
-    DistributedInit initMethod,
-    int worldRank,
-    int worldSize,
+    DistributedInit rendezvousMethod,
+    DistributedBackend backendType,
+    std::optional<int> worldRank,
+    std::optional<int> worldSize,
     const std::unordered_map<std::string, std::string>& params = {});
 
 /**
@@ -138,17 +140,50 @@ FL_API void barrier();
 /** @} */
 
 namespace detail {
+
 class DistributedInfo {
  public:
   static DistributedInfo& getInstance();
 
   bool isInitialized_ = false;
   DistributedInit initMethod_;
+  // The default distributed backend
   DistributedBackend backend_;
+
+  const DistributedInterface& getInterface(DistributedBackend backend);
 
  private:
   DistributedInfo() = default;
+
+  // An instance of the distributed backend and rendezvous backend that were
+  // used
+  std::unordered_map<DistributedBackend, std::unique_ptr<DistributedInterface>>
+      interfaces_;
 };
+
+/**
+ * Information returned from rendezvous/distributed initialization.
+ */
+struct DistributedInitInfo {
+  int worldSize;
+  int worldRank;
+};
+
+class DistributedInterface {
+ public:
+  DistributedInterface();
+  bool isInitialized();
+  DistributedInfo rendezvous();
+  void allBroadcast(void* data, size_t bytes, int rootRank);
+  void allReduce(Tensor& input, bool async);
+  // TODO: finish these
+  // void sendData(const Device& device, void* data, size_t bytes);
+  // void recvData(const Device& device, void* data, size_t bytes);
+  void
+  allReduceMulitple(std::vector<Tensor*> arrs, bool async, bool contiguous);
+  void allBarrier();
+};
+
 } // namespace detail
 
 } // namespace fl

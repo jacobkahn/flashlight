@@ -7,10 +7,31 @@
 
 #include "flashlight/fl/distributed/DistributedApi.h"
 
+#include <stdexcept>
+
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/tensor/TensorBase.h"
 
 namespace fl {
+
+void distributedInit(
+    DistributedInit rendezvousMethod,
+    DistributedBackend backendType,
+    std::optional<int> worldRank,
+    std::optional<int> worldSize,
+    const std::unordered_map<std::string, std::string>& params /* = {} */) {
+  if (rendezvousMethod == DistributedInit::FILE_SYSTEM &&
+      (!worldRank.has_value() || !worldSize.has_value())) {
+    throw std::runtime_error(
+        "distributedInit: FILE_SYSTEM rendezvous requires passing "
+        "worldRank and worldSize arguments.");
+  }
+
+  if (isDistributedInit()) {
+    std::cerr << "warning: fl::distributedInit() called more than once\n";
+    return;
+  }
+}
 
 FL_API bool isDistributedInit() {
   return detail::DistributedInfo::getInstance().isInitialized_;
@@ -56,10 +77,11 @@ FL_API void barrier() {
 }
 
 namespace detail {
+
 /*  static */ DistributedInfo& DistributedInfo::getInstance() {
   static DistributedInfo dinfo;
   return dinfo;
 }
-} // namespace detail
 
+} // namespace detail
 } // namespace fl

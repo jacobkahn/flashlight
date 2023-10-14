@@ -5,13 +5,14 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include "flashlight/fl/distributed/backend/nccl/NcclBackend.h"
+
 #include <algorithm>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 
-#include <mpi.h>
 #include <nccl.h>
 
 #include "flashlight/fl/common/Defines.h"
@@ -23,9 +24,6 @@
 #include "flashlight/fl/runtime/DeviceManager.h"
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/Types.h"
-
-#define NCCLCHECK(expr) ::fl::detail::ncclCheck((expr))
-#define MPICHECK(expr) ::fl::detail::mpiCheck((expr))
 
 namespace fl {
 
@@ -76,6 +74,8 @@ bool isNonNegativeInteger(const std::string& s) {
                        }) == s.end();
 }
 
+} // namespace
+
 ncclDataType_t getNcclTypeForArray(const Tensor& arr) {
   switch (arr.type()) {
     case fl::dtype::f16:
@@ -94,12 +94,6 @@ ncclDataType_t getNcclTypeForArray(const Tensor& arr) {
   }
 }
 
-} // namespace
-
-void ncclCheck(ncclResult_t r);
-
-void mpiCheck(int ec);
-
 void allReduceCuda(
     const CUDAStream* bufferStream,
     void* ptr,
@@ -109,7 +103,7 @@ void allReduceCuda(
     const bool contiguous);
 } // namespace detail
 
-void allReduce(Tensor& arr, bool async /* = false */) {
+void NcclBackend::allReduce(Tensor& arr, bool async /* = false */) {
   if (!isDistributedInit()) {
     throw std::runtime_error("distributed environment not initialized");
   }
@@ -124,7 +118,7 @@ void allReduce(Tensor& arr, bool async /* = false */) {
       /* contiguous = */ false);
 }
 
-void allReduceMultiple(
+void NcclBackend::allReduceMultiple(
     std::vector<Tensor*> arrs,
     bool async /* = false */,
     bool contiguous /* = false */) {
@@ -135,11 +129,11 @@ void allReduceMultiple(
 
   if (!contiguous) {
     // Use nccl groups to do everything in a single kernel launch
-    NCCLCHECK(ncclGroupStart());
+    FL_NCCL_CHECK(ncclGroupStart());
     for (auto& arr : arrs) {
       allReduce(*arr, async);
     }
-    NCCLCHECK(ncclGroupEnd());
+    FL_NCCL_CHECK(ncclGroupEnd());
     return;
   }
 
@@ -177,7 +171,8 @@ void allReduceMultiple(
   auto& ncclContext = detail::NcclContext::getInstance();
   const auto& workerStream = ncclContext.getWorkerStream();
 
-  const auto constTensors = std::vector<const Tensor*>(arrs.begin(), arrs.end());
+  const auto constTensors =
+      std::vector<const Tensor*>(arrs.begin(), arrs.end());
   // Block the copy worker stream on Flashlight's active CUDA stream
   relativeSync(workerStream, constTensors);
 
@@ -197,12 +192,7 @@ void allReduceMultiple(
 
   // Now, call allReduce once on the entire copy buffer
   detail::allReduceCuda(
-      &workerStream,
-      coalesceBuffer,
-      totalEls,
-      ncclType,
-      async,
-      contiguous);
+      &workerStream, coalesceBuffer, totalEls, ncclType, async, contiguous);
 
   // Block the worker stream's copy operations on allReduce operations that are
   // currently enqueued in the reduction stream
@@ -224,6 +214,12 @@ void allReduceMultiple(
         workerStream.handle()));
     cur += entry.second;
   }
+}
+
+DistributedInfo NcclBackend::rendezvous() {
+  throw std::runtime_error(
+      "NcclBackend::rendezvous - the NCCL backend "
+      "doesn't support rendezvous.");
 }
 
 /**
@@ -303,17 +299,6 @@ void ncclCheck(ncclResult_t r) {
   }
 }
 
-void mpiCheck(int ec) {
-  if (ec == MPI_SUCCESS) {
-    return;
-  } else {
-    char buf[MPI_MAX_ERROR_STRING];
-    int resultlen;
-    MPI_Error_string(ec, buf, &resultlen);
-    throw std::runtime_error(buf);
-  }
-}
-
 void allReduceCuda(
     const CUDAStream* bufferStream,
     void* ptr,
@@ -342,7 +327,7 @@ void allReduceCuda(
   // don't synchronize streams if not async and not contiguous - the AF CUDA
   // stream does everything
 
-  NCCLCHECK(ncclAllReduce(
+  FL_NCCL_CHECK(ncclAllReduce(
       ptr,
       ptr,
       count,
@@ -410,10 +395,9 @@ void NcclContext::createCudaResources() {
 
 void NcclContext::initWithMPI(
     const std::unordered_map<std::string, std::string>& params) {
-  // initializing MPI
-  MPICHECK(MPI_Init(nullptr, nullptr));
-  MPICHECK(MPI_Comm_rank(MPI_COMM_WORLD, &worldRank_));
-  MPICHECK(MPI_Comm_size(MPI_COMM_WORLD, &worldSize_));
+  DistributedInitInfo info = initWithMPI();
+  worldRank_ = info.worldRank;
+  worldSize_ = info.worldSize;
 
   auto maxDevicePerNode = params.find(DistributedConstants::kMaxDevicePerNode);
   if (maxDevicePerNode == params.end() ||
@@ -432,10 +416,10 @@ void NcclContext::initWithMPI(
   if (worldRank_ == 0) {
     ncclGetUniqueId(&id);
   }
-  MPICHECK(MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
+  broadcast(&id, sizeof(id), /* rootRank */ 0);
 
   // initializing NCCL
-  NCCLCHECK(ncclCommInitRank(&comm_, worldSize_, id, worldRank_));
+  FL_NCCL_CHECK(ncclCommInitRank(&comm_, worldSize_, id, worldRank_));
 
   createCudaResources();
 }
@@ -479,7 +463,7 @@ void NcclContext::initWithFileSystem(
   // No need for barrier here as ncclCommInitRank inherently synchronizes
 
   // initializing NCCL
-  NCCLCHECK(ncclCommInitRank(&comm_, worldSize_, id, worldRank_));
+  FL_NCCL_CHECK(ncclCommInitRank(&comm_, worldSize_, id, worldRank_));
 
   // Remove the temporary file created for initialization
   if (worldRank_ == 0) {
@@ -494,7 +478,7 @@ NcclContext::~NcclContext() {
 // DEBUG : ncclCommDestroy disabled as it leads to segfault.
 #else
   // finalizing NCCL
-  NCCLCHECK(ncclCommDestroy(comm_));
+  FL_NCCL_CHECK(ncclCommDestroy(comm_));
 #endif
 
 // The CUDA driver has already shut down before we can free, so don't free by
@@ -506,10 +490,11 @@ NcclContext::~NcclContext() {
   }
 #endif
 
-  if (DistributedInfo::getInstance().initMethod_ == DistributedInit::MPI) {
-    // finalizing MPI
-    MPICHECK(MPI_Finalize());
-  }
+  // TODO: This should be autoamtically handled by the MPI dtor?
+  // if (DistributedInfo::getInstance().initMethod_ == DistributedInit::MPI) {
+  //   // finalizing MPI
+  //   MPICHECK(MPI_Finalize());
+  // }
 }
 } // namespace
 } // namespace detail
