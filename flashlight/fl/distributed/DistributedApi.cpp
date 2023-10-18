@@ -27,10 +27,11 @@ void distributedInit(
         "worldRank and worldSize arguments.");
   }
 
-  if (isDistributedInit()) {
-    std::cerr << "warning: fl::distributedInit() called more than once\n";
-    return;
-  }
+  // Does this really make sense? We could initialize with multiple backends
+  // if (isDistributedInit()) {
+  //   std::cerr << "warning: fl::distributedInit() called more than once\n";
+  //   return;
+  // }
 }
 
 FL_API bool isDistributedInit() {
