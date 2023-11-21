@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "flashlight/fl/distributed/DistributedApi.h"
+#include "flashlight/fl/distributed/backend/stub/StubBackend.h"
 
 #include <iostream>
 #include <list>
@@ -27,11 +27,12 @@ void distributedInit(
   if (worldSize > 1 || worldRank > 0) {
     throw std::runtime_error("worldSize must be 1 with distributed stub");
   }
-  detail::DistributedInfo::getInstance().backend_ = DistributedBackend::STUB;
-  detail::DistributedInfo::getInstance().isInitialized_ = true;
+  // detail::DistributedInfo::getInstance().backend_ = DistributedBackend::STUB;
+  // detail::DistributedInfo::getInstance().isInitialized_ = true;
 }
 
-void allReduce(Tensor& arr, bool async /* = false */) {
+// TODO: have this and the other funcs just return the tensor?
+void StubBackend::allReduce(Tensor& arr, bool async /* = false */) {
   if (!isDistributedInit()) {
     throw std::runtime_error("distributed environment not initialized");
   }
@@ -39,12 +40,31 @@ void allReduce(Tensor& arr, bool async /* = false */) {
 }
 
 // Not yet supported
-void allReduceMultiple(
+void StubBackend::allReduceMultiple(
     std::vector<Tensor*> arrs,
     bool async /* = false */,
     bool contiguous /* = false */) {
   throw std::runtime_error(
       "allReduceMultiple not supported for distributed stub backend");
+}
+
+DistributedInitInfo StubBackend::rendezvous() {
+  // Supports a trivial single-proc rendezvous
+  DistributedInitInfo info;
+  info.worldSize = 1;
+  info.worldRank = 0;
+  return info;
+}
+
+void StubBackend::allBroadcast(void* data, size_t bytes, int rootRank) {
+  throw std::runtime_error(
+      "allBroadcast not supported for distributed stub backend");
+}
+
+void StubBackend::allBarrier() {
+  // TODO: make this function a no-op passthrough?
+  throw std::runtime_error(
+      "allBarrier not supported for distributed stub backend");
 }
 
 void syncDistributed() {

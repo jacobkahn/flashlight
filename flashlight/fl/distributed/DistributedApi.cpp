@@ -8,49 +8,68 @@
 #include "flashlight/fl/distributed/DistributedApi.h"
 
 #include <stdexcept>
+#include <unordered_map>
+#include <utility>
 
 #include "flashlight/fl/common/Defines.h"
+#include "flashlight/fl/distributed/DistributedBackends.h"
 #include "flashlight/fl/tensor/TensorBase.h"
 
 namespace fl {
 
 void distributedInit(
     DistributedInit rendezvousMethod,
-    DistributedBackend backendType,
+    DistributedBackend backend,
     std::optional<int> worldRank,
     std::optional<int> worldSize,
     const std::unordered_map<std::string, std::string>& params /* = {} */) {
-  if (rendezvousMethod == DistributedInit::FILE_SYSTEM &&
-      (!worldRank.has_value() || !worldSize.has_value())) {
+  auto commGroup = createDistributedCommGroup(
+      rendezvousMethod, backend, worldRank, worldSize, params);
+
+  auto& distributedInfo = detail::DistributedInfo::getInstance();
+
+  if (distributedInfo.defaultCommGroupExists(backend)) {
     throw std::runtime_error(
-        "distributedInit: FILE_SYSTEM rendezvous requires passing "
-        "worldRank and worldSize arguments.");
+        "setDefaultCommGroup: a default communicator already exists for the " +
+        toString(backend) + "backend type.");
   }
 
-  // Does this really make sense? We could initialize with multiple backends
-  // if (isDistributedInit()) {
-  //   std::cerr << "warning: fl::distributedInit() called more than once\n";
-  //   return;
-  // }
+  // Set this communicator as the default for this DistributedBackend type
+  detail::DistributedInfo::getInstance().setDefaultCommGroup(
+      backend, commGroup);
 }
 
-FL_API bool isDistributedInit() {
-  return detail::DistributedInfo::getInstance().isInitialized_;
+bool isDistributedInit(DistributedBackend backend) {
+  return detail::DistributedInfo::getInstance().defaultCommGroupExists(backend);
 }
 
-FL_API DistributedBackend distributedBackend() {
+DistributedBackend distributedBackend() {
   return detail::DistributedInfo::getInstance().backend_;
 }
 
-FL_API void
-allReduce(Variable& var, double scale /* = 1.0 */, bool async /* = false */) {
+void allReduce(
+    Variable& var,
+    double scale /* = 1.0 */,
+    bool async /* = false */) {
   if (getWorldSize() > 1) {
     allReduce(var.tensor(), async);
   }
   var.tensor() *= scale;
 }
 
-FL_API void allReduceMultiple(
+void allReduce(
+    DistributedCommGroup& group,
+    Variable& var,
+    double scale /* = 1.0 */,
+    bool async /* = false */) {
+  if (getWorldSize() > 1) {
+    group.allReduce(var.tensor(), async);
+  }
+  var.tensor() *= scale;
+}
+
+void allReduceMultiple(
+    DistributedCommGroup& group,
     std::vector<Variable> vars,
     double scale /* = 1.0 */,
     bool async /* = false */,
@@ -61,14 +80,14 @@ FL_API void allReduceMultiple(
     arrs.push_back(&var.tensor());
   }
   if (getWorldSize() > 1) {
-    allReduceMultiple(arrs, async, contiguous);
+    group.allReduceMultiple(arrs, async, contiguous);
   }
   for (auto& var : vars) {
     var.tensor() *= scale;
   }
 }
 
-FL_API void barrier() {
+void barrier() {
   auto tensor = Tensor::fromVector<int>({0});
   allReduce(tensor, false);
 
@@ -77,12 +96,4 @@ FL_API void barrier() {
   fl::sum(tensor).asScalar<float>();
 }
 
-namespace detail {
-
-/*  static */ DistributedInfo& DistributedInfo::getInstance() {
-  static DistributedInfo dinfo;
-  return dinfo;
-}
-
-} // namespace detail
 } // namespace fl

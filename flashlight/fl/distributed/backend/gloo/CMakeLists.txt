@@ -14,6 +14,6 @@ target_link_libraries(flashlight PRIVATE gloo)
 target_sources(
   flashlight
   PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/DistributedBackend.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/GlooBackend.cpp
 )
 

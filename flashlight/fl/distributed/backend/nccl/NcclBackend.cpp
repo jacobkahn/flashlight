@@ -76,8 +76,8 @@ bool isNonNegativeInteger(const std::string& s) {
 
 } // namespace
 
-ncclDataType_t getNcclTypeForArray(const Tensor& arr) {
-  switch (arr.type()) {
+ncclDataType_t getNcclType(fl::dtype type) {
+  switch (type) {
     case fl::dtype::f16:
       return ncclHalf;
     case fl::dtype::f32:
@@ -90,8 +90,12 @@ ncclDataType_t getNcclTypeForArray(const Tensor& arr) {
       return ncclInt64;
       break;
     default:
-      throw std::runtime_error("unsupported data type for allreduce with NCCL");
+      throw std::runtime_error("getNcclTypeForArray");
   }
+}
+
+ncclDataType_t getNcclType(const Tensor& tensor) {
+  return getNcclType(tensor.type());
 }
 
 void allReduceCuda(
@@ -107,7 +111,7 @@ void NcclBackend::allReduce(Tensor& arr, bool async /* = false */) {
   if (!isDistributedInit()) {
     throw std::runtime_error("distributed environment not initialized");
   }
-  ncclDataType_t type = detail::getNcclTypeForArray(arr);
+  ncclDataType_t type = detail::getNcclType(arr);
   DevicePtr tensorPtr(arr);
   detail::allReduceCuda(
       &arr.stream().impl<CUDAStream>(),
@@ -139,9 +143,9 @@ void NcclBackend::allReduceMultiple(
 
   // We can only do a contiguous set reduction if all arrays in the set are of
   // the same type, else fail
-  ncclDataType_t ncclType = detail::getNcclTypeForArray(*arrs[0]);
+  ncclDataType_t ncclType = detail::getNcclType(*arrs[0]);
   for (auto& arr : arrs) {
-    if (detail::getNcclTypeForArray(*arr) != ncclType) {
+    if (detail::getNcclType(*arr) != ncclType) {
       throw std::runtime_error(
           "Cannot perform contiguous set allReduce on a set of tensors "
           "of different types");

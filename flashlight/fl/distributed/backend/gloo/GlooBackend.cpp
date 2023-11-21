@@ -45,26 +45,10 @@ namespace fl {
 
 namespace detail {
 
-std::shared_ptr<gloo::mpi::Context> globalContext() {
+std::shared_ptr<gloo::mpi::Context> GlooBackend::globalContext() {
   return glooContext_;
 }
 
-template <typename T>
-inline void allreduceGloo(T* ptr, size_t s) {
-  auto key = detail::makeHashKey(ptr, s, "allreduceCpu");
-  auto algorithm = glooCache_.get(key);
-  if (algorithm == nullptr) {
-    using Allreduce = gloo::AllreduceHalvingDoubling<T>;
-    algorithm = glooCache_.put(
-        key,
-        std::make_unique<Allreduce>(
-            globalContext(),
-            std::vector<T*>({ptr}),
-            s,
-            gloo::ReductionFunction<T>::sum));
-  }
-  algorithm->run();
-}
 } // namespace detail
 
 void distributedInit(
@@ -101,7 +85,7 @@ void distributedInit(
   }
 }
 
-void allReduce(fl::Tensor& tensor, bool async /* = false */) {
+void GlooBackend::allReduce(fl::Tensor& tensor, bool async /* = false */) {
   if (!isDistributedInit()) {
     throw std::runtime_error("distributed environment not initialized");
   }

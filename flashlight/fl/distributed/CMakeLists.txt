@@ -51,6 +51,7 @@ target_sources(
   flashlight
   PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/DistributedApi.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/DistributedBackends.cpp
   ${CMAKE_CURRENT_LIST_DIR}/FileStore.cpp
   ${CMAKE_CURRENT_LIST_DIR}/reducers/InlineReducer.cpp
   ${CMAKE_CURRENT_LIST_DIR}/reducers/CoalescingReducer.cpp
@@ -62,6 +63,15 @@ if (FL_DISTRIBUTED_STUB)
   # TODO: relax this when tensor-based dispatch is available
   include(${CMAKE_CURRENT_LIST_DIR}/backend/stub/CMakeLists.txt)
 endif()
+
+target_compile_definitions(
+  flashlight
+  PRIVATE
+  FL_USE_NCCL=$<BOOL:${FL_USE_NCCL}>
+  FL_USE_GLOO=$<BOOL:${FL_USE_GLOO}>
+  FL_USE_MPI=$<BOOL:${FL_USE_MPI}>
+  FL_USE_STUB=$<BOOL:${FL_USE_STUB}>
+)
 
 # ----------------------------- Backends -----------------------------
 # TODO: there needs to be some provenance of rendezvous support to make

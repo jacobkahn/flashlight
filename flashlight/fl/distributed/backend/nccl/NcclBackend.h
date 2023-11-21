@@ -7,14 +7,28 @@
 
 #include "flashlight/fl/distributed/DistributedApi.h"
 
-namespace fl {
-namespace detail {
+#include <nccl.h>
+
+#include "flashlight/fl/tensor/Types.h"
+
+namespace fl::detail {
 
 void ncclCheck(ncclResult_t r);
 
-ncclDataType_t getNcclTypeForArray(const Tensor& arr);
+ncclDataType_t getNcclType(fl::dtype type);
 
-class NcclBackend : public DistributedInterface {
+ncclDataType_t getNcclType(const Tensor& tensor);
+
+class NcclBackend : public DistributedCommGroup {
+  // TODO: to be stored here:
+  /*
+    - coalesceBuffer
+    - allocBuffer_
+    - reductionStream_
+    - workerStream_
+    - ncclComm_t comm_
+   */
+
  public:
   NcclBackend();
   ~NcclBackend();
@@ -23,12 +37,11 @@ class NcclBackend : public DistributedInterface {
   DistributedInfo rendezvous() override;
   void allBroadcast(void* data, size_t bytes, int rootRank) override;
   void allReduce(Tensor& input, bool async) override;
-  void allReduceMulitple(std::vector<Tensor*> arrs, bool async, bool contiguous)
+  void allReduceMultiple(std::vector<Tensor*> arrs, bool async, bool contiguous)
       override;
   void allBarrier() override;
 };
 
-} // namespace detail
-} // namespace fl
+} // namespace fl::detail
 
 #define FL_NCCL_CHECK(expr) ::fl::detail::ncclCheck((expr))

@@ -14,22 +14,38 @@
 
 #include "flashlight/fl/autograd/Variable.h"
 #include "flashlight/fl/common/Defines.h"
+#include "flashlight/fl/distributed/DistributedInterface.h"
 #include "flashlight/fl/tensor/TensorBase.h"
 
 namespace fl {
+
 /**
  * \defgroup distributed_api Distributed API
  * @{
  */
 
+// TODO: remove this namespace
+namespace DistributedConstants {
+
+constexpr const char* kMaxDevicePerNode = "MAX_DEVICE_PER_NODE";
+constexpr const char* kFilePath = "FILE_PATH";
+constexpr const std::size_t kCoalesceCacheSize = ((size_t)(20) << 20); // 20 MB
+
+} // namespace DistributedConstants
+
 /**
- * Initialize the distributed environment. Note that `worldSize`, `worldRank`
- * are ignored if `DistributedInit::MPI` is used as the rendezvousMethod.
+ * Initialize the distributed environment, setting the communicator created with
+ * the given settings as the default for the given DistributedBackend type.
  *
- * @param initMethod Initialization method used for setting up the rendezvous
- * @param worldSize Total number of processes in the communication group
- *`@param worldRank 0-indexed rank of the current process
- * @param params Additional parameters (if any) needed for initialization
+ * \note `worldSize`, `worldRank` are ignored if `DistributedInit::MPI` is used
+ * as the rendezvousMethod.
+ *
+ * @param[in] rendezvousMethod Initialization method used for setting up the
+ * rendezvous.
+ * @param[in] backendType the type of communicator to create, based on backend
+ * @param[in] worldSize Total number of processes in the communication group
+ * @param[in] worldRank 0-indexed rank of the current process
+ * @param[in] params Additional parameters (if any) needed for initialization
  */
 FL_API void distributedInit(
     DistributedInit rendezvousMethod,
@@ -49,8 +65,8 @@ FL_API bool isDistributedInit();
 FL_API DistributedBackend distributedBackend();
 
 /**
- * Returns rank of the current process in the communication group (zero-based).
- * Returns 0 if distributed environment is not initialized
+ * Returns rank of the current process in the communication group
+ * (zero-based). Returns 0 if distributed environment is not initialized
  */
 FL_API int getWorldRank();
 
@@ -65,21 +81,27 @@ FL_API int getWorldSize();
  *
  * @param[in] var a variable whose array will be synchronized
  * @param[in] scale scale the Variable after allreduce by this factor
- * @param[in] async perform the allReduce operation asynchronously in a separate
- * compute stream to the Flashlight compute stream. NB: if true,
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if true,
  * ``syncDistributed`` *must* be called in order to ensure the Flashlight CUDA
  * stream waits until ``allReduce`` is complete and uses updated values.
  */
 FL_API void allReduce(Variable& var, double scale = 1.0, bool async = false);
 
+FL_API void allReduce(
+    DistributedCommGroup& com,
+    Variable& var,
+    double scale /* = 1.0 */,
+    bool async /* = false */);
+
 /**
  * Synchronizes a single Flashlight array with allreduce.
  *
  * @param arr an array which will be synchronized
- * @param[in] async perform the allReduce operation asynchronously in a separate
- * compute stream to the Flashlight compute stream. NB: if used,
- * ``syncDistributed`` *must* be called in order to ensure asynchrnous reduction
- * and worker streams wait until ``allReduce`` is complete and uses
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if used,
+ * ``syncDistributed`` *must* be called in order to ensure asynchrnous
+ * reduction and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
  */
 FL_API void allReduce(Tensor& arr, bool async = false);
@@ -89,10 +111,10 @@ FL_API void allReduce(Tensor& arr, bool async = false);
  *
  * @param[in] vars `Variable`s whose arrays will be synchronized
  * @param[in] scale scale the Variable after allreduce by this factor
- * @param[in] async perform the allReduce operation asynchronously in a separate
- * compute stream to the Flashlight compute stream. NB: if used,
- * ``syncDistributed`` *must* be called in order to ensure asynchrnous reduction
- * and worker streams wait until ``allReduce`` is complete and uses
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if used,
+ * ``syncDistributed`` *must* be called in order to ensure asynchrnous
+ * reduction and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
  * @param[in] contiguous copy data for each Variable into a contiguous buffer
  * before performing the allReduce operation
@@ -103,14 +125,21 @@ FL_API void allReduceMultiple(
     bool async = false,
     bool contiguous = false);
 
+FL_API void allReduceMultiple(
+    DistributedCommGroup& comm,
+    std::vector<Variable> vars,
+    double scale /* = 1.0 */,
+    bool async /* = false */,
+    bool contiguous /* = false */);
+
 /**
  * Synchronizes a vector of pointers to arrays with allreduce.
  *
  * @param[in] arrs a vector of pointers to arrays which will be synchronized
- * @param[in] async perform the allReduce operation asynchronously in a separate
- * compute stream to the Flashlight compute stream. NB: if used,
- * ``syncDistributed`` *must* be called in order to ensure asynchrnous reduction
- * and worker streams wait until ``allReduce`` is complete and uses
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if used,
+ * ``syncDistributed`` *must* be called in order to ensure asynchrnous
+ * reduction and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
  * @param[in] contiguous copy data for each Variable into a contiguous buffer
  * before performing the allReduce operation
@@ -122,9 +151,10 @@ FL_API void allReduceMultiple(
 
 /**
  * Synchronizes operations in the Flashlight compute stream with operations in
- * the distributed compute stream, if applicable. That is, all operations in the
- * Flashlight compute stream will not be executed until operations currently
- * enqueued on the distributed compute stream are finished executing.
+ * the distributed compute stream, if applicable. That is, all operations in
+ * the Flashlight compute stream will not be executed until operations
+ * currently enqueued on the distributed compute stream are finished
+ * executing.
  *
  * Note that if asynchronous allReduce is not used, this operation will be a
  * no-op, since no operations will be enqueued on the distributed compute
@@ -138,52 +168,5 @@ FL_API void syncDistributed();
 FL_API void barrier();
 
 /** @} */
-
-namespace detail {
-
-class DistributedInfo {
- public:
-  static DistributedInfo& getInstance();
-
-  bool isInitialized_ = false;
-  DistributedInit initMethod_;
-  // The default distributed backend
-  DistributedBackend backend_;
-
-  const DistributedInterface& getInterface(DistributedBackend backend);
-
- private:
-  DistributedInfo() = default;
-
-  // An instance of the distributed backend and rendezvous backend that were
-  // used
-  std::unordered_map<DistributedBackend, std::unique_ptr<DistributedInterface>>
-      interfaces_;
-};
-
-/**
- * Information returned from rendezvous/distributed initialization.
- */
-struct DistributedInitInfo {
-  int worldSize;
-  int worldRank;
-};
-
-class DistributedInterface {
- public:
-  DistributedInterface();
-  bool isInitialized();
-  DistributedInfo rendezvous();
-  void allBroadcast(void* data, size_t bytes, int rootRank);
-  void allReduce(Tensor& input, bool async);
-  // TODO: finish these
-  // void sendData(const Device& device, void* data, size_t bytes);
-  // void recvData(const Device& device, void* data, size_t bytes);
-  void
-  allReduceMulitple(std::vector<Tensor*> arrs, bool async, bool contiguous);
-  void allBarrier();
-};
-
-} // namespace detail
 
 } // namespace fl

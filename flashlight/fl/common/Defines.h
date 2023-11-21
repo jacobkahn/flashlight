@@ -77,25 +77,6 @@ enum class PaddingMode {
   SAME = -1,
 };
 
-enum class DistributedBackend {
-  /// https://github.com/facebookincubator/gloo
-  GLOO = 0,
-  /// https://developer.nvidia.com/nccl
-  NCCL = 1,
-  STUB = 2,
-};
-
-enum class DistributedInit {
-  MPI = 0,
-  FILE_SYSTEM = 1,
-};
-
-namespace DistributedConstants {
-constexpr const char* kMaxDevicePerNode = "MAX_DEVICE_PER_NODE";
-constexpr const char* kFilePath = "FILE_PATH";
-constexpr const std::size_t kCoalesceCacheSize = ((size_t)(20) << 20); // 20 MB
-} // namespace DistributedConstants
-
 constexpr std::size_t kDynamicBenchmarkDefaultCount = 10;
 constexpr double kAmpMinimumScaleFactorValue = 1e-4;
 
