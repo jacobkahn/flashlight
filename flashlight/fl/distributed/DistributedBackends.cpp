@@ -105,14 +105,14 @@ namespace detail {
 }
 
 const DistributedCommGroup& DistributedInfo::getInterface(
-    DistributedBackend backend) {
+    DistributedBackend backend) const {
   if (!defaultCommGroupExists(backend)) {
     throw std::invalid_argument("" + toString(backend));
   }
-  return *defaultCommGroups_[backend];
+  return *defaultCommGroups_.at(backend);
 }
 
-bool DistributedInfo::defaultCommGroupExists(DistributedBackend backend) {
+bool DistributedInfo::defaultCommGroupExists(DistributedBackend backend) const {
   return defaultCommGroups_.find(backend) != defaultCommGroups_.end();
 }
 

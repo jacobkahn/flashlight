@@ -65,7 +65,7 @@ class DistributedInfo {
    * @return a reference to the default communication group for the given
    * backend
    */
-  const DistributedCommGroup& getInterface(DistributedBackend backend);
+  const DistributedCommGroup& getInterface(DistributedBackend backend) const;
 
   /**
    * Check if a default communication group exists for a given backend.
@@ -74,7 +74,7 @@ class DistributedInfo {
    *
    * @return true if a default exists, false otherwise
    */
-  bool defaultCommGroupExists(DistributedBackend backend);
+  bool defaultCommGroupExists(DistributedBackend backend) const;
 
   /**
    * Set the default communicator for a given backend type.

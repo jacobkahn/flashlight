@@ -43,6 +43,48 @@ bool isDistributedInit(DistributedBackend backend) {
   return detail::DistributedInfo::getInstance().defaultCommGroupExists(backend);
 }
 
+const DistributedCommGroup& getDefaultDistributedCommGroupForTensor(
+    const Tensor& tensor) {
+  const auto& distributedInfo = detail::DistributedInfo::getInstance();
+  switch (tensor.backendType()) {
+    case TensorBackendType::Jit:
+      throw std::invalid_argument(
+          "getDefaultDistributedCommGroupForTensor: "
+          "JIT tensors not yet supported");
+    // static_cast<JitBackend>
+    // // get the wrapped backend's backend type, recurse
+    // return getDistributedCommGroupForTensorBackendType(
+    //     tensor.backend().backendType());
+    default:
+      return getDefaultDistributedCommGroupForTensorBackendType(
+          tensor.backendType());
+  }
+}
+
+const DistributedCommGroup& getDefaultDistributedCommGroupForTensorBackendType(
+    TensorBackendType type) {
+  const auto& distributedInfo = detail::DistributedInfo::getInstance();
+  switch (type) {
+    case TensorBackendType::Stub:
+      return distributedInfo.getInterface(DistributedBackend::STUB);
+    case TensorBackendType::ArrayFire:
+      return distributedInfo.getInterface(DistributedBackend::NCCL);
+    case TensorBackendType::OneDnn:
+      return distributedInfo.getInterface(DistributedBackend::GLOO);
+    case TensorBackendType::Jit:
+      throw std::invalid_argument(
+          "getDefaultDistributedCommGroupForTensorBackendType: "
+          "can't convert Jit backend type to distributed backend type - use "
+          "getDefaultDistributedCommGroupForTensor with a tensor from the "
+          "respective JIT backend.");
+    default:
+      throw std::invalid_argument(
+          "getDefaultDistributedCommGroupForTensorBackendType: "
+          "impossible state - no known distributed interface for given tensor "
+          "type. Developers: please add a case and/or informative exception");
+  }
+}
+
 DistributedBackend distributedBackend() {
   return detail::DistributedInfo::getInstance().backend_;
 }

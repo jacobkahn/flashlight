@@ -60,6 +60,30 @@ FL_API void distributedInit(
 FL_API bool isDistributedInit();
 
 /**
+ * Returns the default DistributedCommGroup for a given a tensor.
+ *
+ * @param[in] tensor a tensor for which to get the default distributed comm
+ * group
+ * @return a reference tot he distributed comm group corresponding to this
+ * tensor.
+ * TODO: this is not a very good return type, make this better.
+ */
+FL_API const DistributedCommGroup& getDefaultDistributedCommGroupForTensor(
+    const Tensor& tensor);
+
+/**
+ * Returns the default DistributedCommGroup for a given a tensor.
+ *
+ * @param[in] type a tensor backend type for which to get a distributed comm
+ * group
+ * @return a reference to the distributed comm group corresponding to this
+ * backend.
+ * TODO: this is not a very good return type, make this better.
+ */
+FL_API const DistributedCommGroup&
+getDefaultDistributedCommGroupForTensorBackendType(TensorBackendType type);
+
+/**
  * Returns the backend used for distributed setup
  */
 FL_API DistributedBackend distributedBackend();
