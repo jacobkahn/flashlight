@@ -44,16 +44,18 @@ class DistributedCommGroup {
  public:
   DistributedCommGroup();
   virtual ~DistributedCommGroup();
-  virtual bool isInitialized() = 0;
+  virtual bool isInitialized() const = 0;
   virtual DistributedInitInfo rendezvous() = 0;
-  virtual void allBroadcast(void* data, size_t bytes, int rootRank) = 0;
-  virtual void allReduce(Tensor& input, bool async) = 0;
+  virtual void allBroadcast(void* data, size_t bytes, int rootRank) const = 0;
+  virtual void allReduce(Tensor& input, bool async) const = 0;
   // TODO: finish these
-  // void sendData(const Device& device, void* data, size_t bytes);
-  // void recvData(const Device& device, void* data, size_t bytes);
-  virtual void
-  allReduceMultiple(std::vector<Tensor*> arrs, bool async, bool contiguous) = 0;
-  virtual void allBarrier() = 0;
+  // void sendData(const Device& device, void* data, size_t bytes) const = 0;
+  // void recvData(const Device& device, void* data, size_t bytes) const = 0;
+  virtual void allReduceMultiple(
+      std::vector<Tensor*> arrs,
+      bool async,
+      bool contiguous) const = 0;
+  virtual void allBarrier() const = 0;
 };
 
 } // namespace fl

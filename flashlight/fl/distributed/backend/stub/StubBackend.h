@@ -16,13 +16,13 @@ class FL_API StubBackend : public DistributedCommGroup {
   StubBackend();
   ~StubBackend();
   // TODO: should these methods be const this*?
-  bool isInitialized() override;
+  bool isInitialized() const override;
   DistributedInitInfo rendezvous() override;
-  void allBroadcast(void* data, size_t bytes, int rootRank) override;
-  void allReduce(Tensor& input, bool async) override;
+  void allBroadcast(void* data, size_t bytes, int rootRank) const override;
+  void allReduce(Tensor& input, bool async) const override;
   void allReduceMultiple(std::vector<Tensor*> arrs, bool async, bool contiguous)
-      override;
-  void allBarrier() override;
+      const override;
+  void allBarrier() const override;
 };
 
 } // namespace fl

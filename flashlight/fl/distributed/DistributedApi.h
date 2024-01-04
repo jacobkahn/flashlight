@@ -96,14 +96,15 @@ FL_API int getWorldRank();
 
 /**
  * Returns total process in the communication group
- * Returns 1 if distributed environment is not initialized
+ll * Returns 1 if distributed environment is not initialized
  */
 FL_API int getWorldSize();
 
 /**
- * Synchronizes a the array wrapped by the Variable with allreduce.
+ * Synchronizes a the tensor wrapped by the Variable with allreduce. This will
+ * use the default distributed communication backend given the tensor type.
  *
- * @param[in] var a variable whose array will be synchronized
+ * @param[in] var a Flashlight `Variable` which will be synchronized
  * @param[in] scale scale the Variable after allreduce by this factor
  * @param[in] async perform the allReduce operation asynchronously in a
  * separate compute stream to the Flashlight compute stream. NB: if true,
@@ -112,28 +113,44 @@ FL_API int getWorldSize();
  */
 FL_API void allReduce(Variable& var, double scale = 1.0, bool async = false);
 
-FL_API void allReduce(
-    DistributedCommGroup& com,
-    Variable& var,
-    double scale /* = 1.0 */,
-    bool async /* = false */);
-
 /**
- * Synchronizes a single Flashlight array with allreduce.
+ * Synchronizes a single Flashlight tensor with allreduce with a specified
+ * distributed communication group.
  *
- * @param arr an array which will be synchronized
+ * @param[in] com a DistributedCommGroup instance corresponding to the
+ * distributed communication backend
+ * @param[in] var a Flashlight `Variable` which will be synchronized
  * @param[in] async perform the allReduce operation asynchronously in a
  * separate compute stream to the Flashlight compute stream. NB: if used,
  * ``syncDistributed`` *must* be called in order to ensure asynchrnous
  * reduction and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
  */
-FL_API void allReduce(Tensor& arr, bool async = false);
+FL_API void
+allReduce(DistributedCommGroup& com, Variable& var, double scale, bool async);
 
 /**
- * Synchronizes a the arrays wrapped by a vector of Variables with allreduce.
+ * Synchronizes a single Flashlight tensor with allreduce.
  *
- * @param[in] vars `Variable`s whose arrays will be synchronized
+ * @param[in] tensor a tensor which will be synchronized
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if used,
+ * ``syncDistributed`` *must* be called in order to ensure asynchrnous
+ * reduction and worker streams wait until ``allReduce`` is complete and uses
+ * updated values.
+ */
+FL_API void allReduce(
+    DistributedCommGroup& group,
+    Tensor& tensor,
+    double scale = 1.0,
+    bool async = false);
+
+/**
+ * Synchronizes a the tensors wrapped by a vector of Variables with allreduce.
+ * This will use the default distributed communication backend given the tensor
+ * type.
+ *
+ * @param[in] vars `Variable`s whose tensors will be synchronized
  * @param[in] scale scale the Variable after allreduce by this factor
  * @param[in] async perform the allReduce operation asynchronously in a
  * separate compute stream to the Flashlight compute stream. NB: if used,
@@ -149,17 +166,32 @@ FL_API void allReduceMultiple(
     bool async = false,
     bool contiguous = false);
 
+/**
+ * Synchronizes a the tensors wrapped by a vector of Variables with allreduce.
+ *
+ * @param[in] com a DistributedCommGroup instance corresponding to the
+ * distributed communication backend
+ * @param[in] vars `Variable`s whose tensors will be synchronized
+ * @param[in] scale scale the Variable after allreduce by this factor
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if used,
+ * ``syncDistributed`` *must* be called in order to ensure asynchrnous
+ * reduction and worker streams wait until ``allReduce`` is complete and uses
+ * updated values.
+ * @param[in] contiguous copy data for each Variable into a contiguous buffer
+ * before performing the allReduce operation
+ */
 FL_API void allReduceMultiple(
     DistributedCommGroup& comm,
     std::vector<Variable> vars,
-    double scale /* = 1.0 */,
-    bool async /* = false */,
-    bool contiguous /* = false */);
+    double scale = 1.0,
+    bool async = false,
+    bool contiguous = false);
 
 /**
- * Synchronizes a vector of pointers to arrays with allreduce.
+ * Synchronizes a vector of pointers to tensors with allreduce.
  *
- * @param[in] arrs a vector of pointers to arrays which will be synchronized
+ * @param[in] arrs a vector of pointers to tensors which will be synchronized
  * @param[in] async perform the allReduce operation asynchronously in a
  * separate compute stream to the Flashlight compute stream. NB: if used,
  * ``syncDistributed`` *must* be called in order to ensure asynchrnous
@@ -170,6 +202,7 @@ FL_API void allReduceMultiple(
  */
 FL_API void allReduceMultiple(
     std::vector<Tensor*> arrs,
+    double scale = 1.0,
     bool async = false,
     bool contiguous = false);
 
