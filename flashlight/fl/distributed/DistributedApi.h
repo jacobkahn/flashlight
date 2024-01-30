@@ -57,7 +57,7 @@ FL_API void distributedInit(
 /**
  * Returns whether the distributed environment has been initialized
  */
-FL_API bool isDistributedInit();
+FL_API bool isDistributedInit(DistributedBackend backend);
 
 /**
  * Returns the default DistributedCommGroup for a given a tensor.
@@ -112,6 +112,21 @@ FL_API int getWorldSize();
  * stream waits until ``allReduce`` is complete and uses updated values.
  */
 FL_API void allReduce(Variable& var, double scale = 1.0, bool async = false);
+
+/**
+ * Synchronizes a the tensor wrapped by the Variable with allreduce. This will
+ * use the default distributed communication backend given the tensor type.
+ * TODO(jacobkahn) update the documentation on async to be more generic about
+ * which computation streams will require relative synchronization
+ *
+ * @param[in] tensor a `Tensor` which will be synchronized
+ * @param[in] scale scale the tensor after allreduce by this factor
+ * @param[in] async perform the allReduce operation asynchronously in a
+ * separate compute stream to the Flashlight compute stream. NB: if true,
+ * ``syncDistributed`` *must* be called in order to ensure the Flashlight CUDA
+ * stream waits until ``allReduce`` is complete and uses updated values.
+ */
+FL_API void allReduce(Tensor& tensor, double scale = 1.0, bool async = false);
 
 /**
  * Synchronizes a single Flashlight tensor with allreduce with a specified

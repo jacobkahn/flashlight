@@ -101,18 +101,6 @@ void allReduce(
 }
 
 void allReduce(
-    DistributedCommGroup& group,
-    Variable& var,
-    double scale /* = 1.0 */,
-    bool async /* = false */) {
-  allReduce(group, var.tensor(), scale, async);
-  if (getWorldSize() > 1) {
-    group.allReduce(var.tensor(), async);
-  }
-  var.tensor() *= scale;
-}
-
-void allReduce(
     Tensor& tensor,
     double scale /* = 1.0 */,
     bool async /* = false */) {
@@ -125,6 +113,18 @@ void allReduce(
 
 void allReduce(
     DistributedCommGroup& group,
+    Variable& var,
+    double scale /* = 1.0 */,
+    bool async /* = false */) {
+  allReduce(group, var.tensor(), scale, async);
+  if (getWorldSize() > 1) {
+    group.allReduce(var.tensor(), async);
+  }
+  var.tensor() *= scale;
+}
+
+void allReduce(
+    DistributedCommGroup& group,
     Tensor& tensor,
     double scale /* = 1.0 */,
     bool async /* = false */) {
@@ -143,9 +143,7 @@ void allReduceMultiple(
   if (vars.empty()) {
     return;
   }
-  const auto& group =
-      getDefaultDistributedCommGroupForTensor(vars.front().tensor());
-  alLReduceMultiple(group, vars, scale, async, contiguous);
+  allReduceMultiple(group, vars, scale, async, contiguous);
 }
 
 void allReduceMultiple(
@@ -157,7 +155,8 @@ void allReduceMultiple(
     return;
   }
 
-  const auto& group = getDefaultDistributedCommGroupForTensor(var.tensor());
+  const auto& group =
+      getDefaultDistributedCommGroupForTensor(vars.front().tensor());
   // use a vector of pointers to thoroughly avoid copying
   std::vector<Tensor*> arrs;
   for (auto& var : vars) {

@@ -20,22 +20,17 @@ void distributedInit(
     int worldRank,
     int worldSize,
     const std::unordered_map<std::string, std::string>& /* params = {} */) {
-  if (isDistributedInit()) {
-    std::cerr << "warning: fl::distributedInit() called more than once\n";
-    return;
-  }
   if (worldSize > 1 || worldRank > 0) {
     throw std::runtime_error("worldSize must be 1 with distributed stub");
   }
+  // TODO(jacobkahn) -- implement this if anything, might just be an empty
+  // constructor call to set the singleton
   // detail::DistributedInfo::getInstance().backend_ = DistributedBackend::STUB;
   // detail::DistributedInfo::getInstance().isInitialized_ = true;
 }
 
 // TODO: have this and the other funcs just return the tensor?
 void StubBackend::allReduce(Tensor& arr, bool async /* = false */) const {
-  if (!isDistributedInit()) {
-    throw std::runtime_error("distributed environment not initialized");
-  }
   throw std::runtime_error("allReduce not supported for stub backend");
 }
 
