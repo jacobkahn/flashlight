@@ -22,6 +22,8 @@ class FL_API StubBackend : public DistributedCommGroup {
   void allReduce(Tensor& input, bool async) const override;
   void allReduceMultiple(std::vector<Tensor*> arrs, bool async, bool contiguous)
       const override;
+  void sendData(const Device& device, void* data, size_t bytes) const override;
+  void recvData(const Device& device, void* data, size_t bytes) const override;
   void allBarrier() const override;
 };
 

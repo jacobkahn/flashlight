@@ -220,6 +220,12 @@ void NcclBackend::allReduceMultiple(
   }
 }
 
+void NcclBackend::sendData(const Device& device, void* data, size_t bytes)
+    const {}
+
+void NcclBackend::recvData(const Device& device, void* data, size_t bytes)
+    const {}
+
 DistributedInfo NcclBackend::rendezvous() {
   throw std::runtime_error(
       "NcclBackend::rendezvous - the NCCL backend "

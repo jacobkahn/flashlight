@@ -11,6 +11,8 @@
 
 namespace fl {
 
+class Device;
+
 enum class DistributedBackend {
   /// https://github.com/facebookincubator/gloo
   GLOO = 0,
@@ -48,13 +50,14 @@ class DistributedCommGroup {
   virtual DistributedInitInfo rendezvous() = 0;
   virtual void allBroadcast(void* data, size_t bytes, int rootRank) const = 0;
   virtual void allReduce(Tensor& input, bool async) const = 0;
-  // TODO: finish these
-  // void sendData(const Device& device, void* data, size_t bytes) const = 0;
-  // void recvData(const Device& device, void* data, size_t bytes) const = 0;
   virtual void allReduceMultiple(
       std::vector<Tensor*> arrs,
       bool async,
       bool contiguous) const = 0;
+  virtual void sendData(const Device& device, void* data, size_t bytes)
+      const = 0;
+  virtual void recvData(const Device& device, void* data, size_t bytes)
+      const = 0;
   virtual void allBarrier() const = 0;
 };
 

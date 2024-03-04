@@ -139,6 +139,18 @@ void allReduceMultiple(
   }
 }
 
+void StubBackend::sendData(const Device& device, void* data, size_t bytes)
+    const {
+  throw std::runtime_error(
+      "sendData not supported for distributed Gloo backend");
+}
+
+void StubBackend::recvData(const Device& device, void* data, size_t bytes)
+    const {
+  throw std::runtime_error(
+      "recvData not supported for distributed Gloo backend");
+}
+
 void syncDistributed() {
   // NOOP since async distributed operations aren't yet supported with the Gloo
   // backend

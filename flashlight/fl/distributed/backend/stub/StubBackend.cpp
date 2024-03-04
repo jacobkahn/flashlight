@@ -43,6 +43,18 @@ void StubBackend::allReduceMultiple(
       "allReduceMultiple not supported for distributed stub backend");
 }
 
+void StubBackend::sendData(const Device& device, void* data, size_t bytes)
+    const {
+  throw std::runtime_error(
+      "sendData not supported for distributed stub backend");
+}
+
+void StubBackend::recvData(const Device& device, void* data, size_t bytes)
+    const {
+  throw std::runtime_error(
+      "recvData not supported for distributed stub backend");
+}
+
 bool StubBackend::isInitialized() const {
   return true;
 }
