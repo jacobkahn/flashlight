@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 set(DIR ${CMAKE_CURRENT_LIST_DIR})
 # TODO remove dependency on runtime components for these tests
 set(LIBS fl_pkg_speech fl_pkg_runtime)

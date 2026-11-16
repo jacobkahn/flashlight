@@ -8,7 +8,8 @@
 #pragma once
 
 #include <vector>
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
+#include "flashlight/fl/common/Serialization.h"
 
 namespace fl {
 namespace pkg {
@@ -46,14 +47,14 @@ class DynamicScaler {
   /*
    * Scale loss before back propagation.
    */
-  fl::Variable scale(const fl::Variable& loss);
+  fl::Tensor scale(const fl::Tensor& loss);
 
   /*
    * Unscale the gradients after back propagation.
    * Return false when NAN or INF occurs in gradients and halve the scale
    * factor, true otherwise.
    */
-  bool unscale(std::vector<fl::Variable>& params);
+  bool unscale(std::vector<fl::Tensor>& params);
 
   /*
    * Increase scale factor

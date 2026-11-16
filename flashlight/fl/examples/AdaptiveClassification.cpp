@@ -10,7 +10,8 @@
 #include "flashlight/fl/optim/optim.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
-#include <fmt/core.h>
+#include <format>
+#include <iostream>
 #include "flashlight/fl/tensor/Random.h"
 
 using namespace fl;
@@ -42,7 +43,7 @@ int main(int /* unused */, const char** /* unused */) {
   auto sgd_m = SGDOptimizer(model.params(), 1e-2);
   auto sgd_c = SGDOptimizer(criterion.params(), 1e-2);
 
-  Variable result, l;
+  Tensor result, l;
   int nepochs = 500, warmup_epochs = 10;
   model.train();
   criterion.train();
@@ -76,22 +77,22 @@ int main(int /* unused */, const char** /* unused */) {
   model.eval();
   result = model(input(in_));
   l = criterion(result, noGrad(out_));
-  auto loss = l.tensor();
+  auto loss = l;
   std::cout << "Loss: " << loss << std::endl;
 
   // accuracy
-  auto log_prob = criterion.getActivation()->forward(result).tensor();
+  auto log_prob = criterion.getActivation()->forward(result);
   Tensor max_value, prediction;
   fl::max(max_value, prediction, log_prob, 0);
   auto accuracy = mean(prediction == label(fl::span, fl::range(0, 1)), {0});
   std::cout << "Accuracy: " << accuracy << std::endl;
 
-  auto pred = asActivation->predict(result).tensor();
+  auto pred = asActivation->predict(result);
   accuracy = mean(
       fl::reshape(pred, label.shape()) == label(fl::span, fl::range(0, 1)),
       {0});
   std::cout << "Accuracy: " << accuracy << std::endl;
 
   // time
-  fmt::print("Time/iteration: {:.5f} msec\n", e * 1000.0 / (nepochs - warmup_epochs));
+  std::cout << std::format("Time/iteration: {:.5f} msec\n", e * 1000.0 / (nepochs - warmup_epochs));
 }

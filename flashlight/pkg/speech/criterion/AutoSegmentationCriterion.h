@@ -31,7 +31,7 @@ class AutoSegmentationCriterion : public SequenceCriterion {
     if (N_ <= 0) {
       throw std::invalid_argument("ASG: N is zero or negative.");
     }
-    fl::Variable transition(transdiag * fl::identity(N_), true);
+    fl::Tensor transition(transdiag * fl::identity(N_), true);
     params_ = {transition};
     syncTransitions();
   }
@@ -41,8 +41,8 @@ class AutoSegmentationCriterion : public SequenceCriterion {
         "Cloning is unimplemented in Module 'AutoSegmentationCriterion'");
   }
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override {
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override {
     if (inputs.size() != 2) {
       throw std::invalid_argument("Invalid inputs size");
     }
@@ -53,7 +53,7 @@ class AutoSegmentationCriterion : public SequenceCriterion {
 
   Tensor viterbiPath(const Tensor& input, const Tensor& inputSize = Tensor())
       override {
-    return fl::pkg::speech::viterbiPath(input, params_[0].tensor());
+    return fl::pkg::speech::viterbiPath(input, params_[0]);
   }
 
   Tensor viterbiPathWithTarget(
@@ -64,7 +64,7 @@ class AutoSegmentationCriterion : public SequenceCriterion {
     return fac_.viterbiPath(input, target);
   }
 
-  void setParams(const fl::Variable& var, int position) override {
+  void setParams(const fl::Tensor& var, int position) override {
     Module::setParams(var, position);
     syncTransitions();
   }

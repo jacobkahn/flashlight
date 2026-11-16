@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # ----------------------------- ArrayFire -----------------------------
 find_package(ArrayFire 3.7.3 REQUIRED)
 if (ArrayFire_FOUND AND ArrayFire_VERSION VERSION_LESS 3.7.1)
@@ -79,7 +77,6 @@ elseif(${FL_ARRAYFIRE_USE_OPENCL})
   target_link_libraries(flashlight PUBLIC ArrayFire::afopencl)
   fl_set_backend_state(ENABLE OPENCL)
 endif()
-
 target_compile_definitions(
   flashlight
   PUBLIC
@@ -97,6 +94,7 @@ target_sources(
   flashlight
   PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/ArrayFireBackend.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ArrayFireAutogradOps.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ArrayFireBinaryOps.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ArrayFireBLAS.cpp
   ${CMAKE_CURRENT_LIST_DIR}/ArrayFireReductions.cpp

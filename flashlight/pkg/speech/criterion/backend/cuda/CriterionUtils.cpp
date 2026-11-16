@@ -49,8 +49,11 @@ Tensor viterbiPath(const Tensor& input, const Tensor& trans) {
       fl::dtype::u8);
 
   {
-    fl::DevicePtr inputRaw(input);
-    fl::DevicePtr transRaw(trans);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousInput = input.asContiguousTensor();
+    auto contiguousTrans = trans.asContiguousTensor();
+    fl::DevicePtr inputRaw(contiguousInput);
+    fl::DevicePtr transRaw(contiguousTrans);
     fl::DevicePtr pathRaw(path);
     fl::DevicePtr workspaceRaw(workspace);
 
@@ -75,7 +78,9 @@ Tensor getTargetSizeArray(const Tensor& target, int maxSize) {
   Tensor targetSize({B}, fl::dtype::s32);
 
   {
-    fl::DevicePtr targetRaw(target);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousTarget = target.asContiguousTensor();
+    fl::DevicePtr targetRaw(contiguousTarget);
     fl::DevicePtr targetSizeRaw(targetSize);
 
     CriterionUtils::batchTargetSize(

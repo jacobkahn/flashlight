@@ -7,15 +7,19 @@
 
 #include "flashlight/fl/tensor/backend/stub/StubBackend.h"
 
+#include "flashlight/fl/tensor/BackendRegistry.h"
+
 #include <stdexcept>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 #define FL_STUB_BACKEND_UNIMPLEMENTED \
   throw std::invalid_argument(        \
       "StubBackend::" + std::string(__func__) + " - unimplemented.");
 
 namespace fl {
+
+FL_REGISTER_TENSOR_BACKEND(Stub, StubBackend::getInstance);
 
 StubBackend::StubBackend() {
   // Set up state
@@ -73,198 +77,275 @@ void StubBackend::setSeed(const int /* seed */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::randn(const Shape& /* shape */, dtype /* type */) {
+Tensor StubBackend::randn(
+    const Shape& /* shape */,
+    dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::rand(const Shape& /* shape */, dtype /* type */) {
+Tensor StubBackend::rand(
+    const Shape& /* shape */,
+    dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 /* --------------------------- Tensor Operators --------------------------- */
 
 /******************** Tensor Creation Functions ********************/
-#define FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(TYPE)                           \
-  Tensor StubBackend::fromScalar(TYPE /* value */, const dtype /* type */) {   \
-    throw std::invalid_argument(                                               \
-        "StubBackend::fromScalar - not implemented for type " +                \
-        std::string(#TYPE));                                                   \
-  }                                                                            \
-  Tensor StubBackend::full(                                                    \
-      const Shape& /* shape */, TYPE /* value */, const dtype /* type */) {    \
-    throw std::invalid_argument(                                               \
-        "StubBackend::full - not implemented for type " + std::string(#TYPE)); \
-  }
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const double&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const float&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const int&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const char&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned char&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const long&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned long&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const long long&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned long long&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const bool&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const short&);
-FL_STUB_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned short&);
+Tensor StubBackend::fromScalar(
+    double /* value */,
+    dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
 
-Tensor StubBackend::identity(const Dim /* dim */, const dtype /* type */) {
+Tensor StubBackend::full(
+    const Shape& /* shape */,
+    double /* value */,
+    dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+Tensor StubBackend::empty(
+    const Shape& /* shape */,
+    dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+Tensor StubBackend::identity(
+    const Dim /* dim */,
+    const dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::arange(
     const Shape& /* shape */,
     const Dim /* seqDim */,
-    const dtype /* type */) {
+    const dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::iota(
     const Shape& /* dims */,
     const Shape& /* tileDims */,
-    const dtype /* type */) {
+    const dtype /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 /************************ Shaping and Indexing *************************/
-Tensor StubBackend::reshape(
+void StubBackend::reshape(
+    Tensor& /* out */,
     const Tensor& /* tensor */,
-    const Shape& /* shape */) {
+    const Shape& /* shape */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::transpose(
+void StubBackend::transpose(
+    Tensor& /* out */,
     const Tensor& /* tensor */,
-    const Shape& /* axes */ /* = {} */) {
+    const Shape& /* axes */ /* = {} */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::tile(const Tensor& /* tensor */, const Shape& /* shape */) {
+void StubBackend::tile(
+    Tensor& /* out */,
+    const Tensor& /* tensor */,
+    const Shape& /* shape */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::concatenate(
+void StubBackend::concatenate(
+    Tensor& /* out */,
     const std::vector<Tensor>& /* tensors */,
-    const unsigned /* axis */) {
+    const unsigned /* axis */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::nonzero(const Tensor& /* tensor */) {
+void StubBackend::nonzero(
+    Tensor& /* out */,
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::pad(
+void StubBackend::pad(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const std::vector<std::pair<int, int>>& /* padWidths */,
-    const PadType /* type */) {
+    const PadType /* type */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 /************************** Unary Operators ***************************/
 
-Tensor StubBackend::exp(const Tensor& /* tensor */) {
+Tensor StubBackend::exp(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::log(const Tensor& /* tensor */) {
+Tensor StubBackend::log(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::negative(const Tensor& /* tensor */) {
+Tensor StubBackend::negative(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::logicalNot(const Tensor& /* tensor */) {
+Tensor StubBackend::logicalNot(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::log1p(const Tensor& /* tensor */) {
+Tensor StubBackend::log1p(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::sin(const Tensor& /* tensor */) {
+Tensor StubBackend::sin(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::cos(const Tensor& /* tensor */) {
+Tensor StubBackend::cos(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::sqrt(const Tensor& /* tensor */) {
+Tensor StubBackend::sqrt(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::tanh(const Tensor& /* tensor */) {
+Tensor StubBackend::tanh(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::floor(const Tensor& /* tensor */) {
+Tensor StubBackend::floor(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::ceil(const Tensor& /* tensor */) {
+Tensor StubBackend::ceil(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::rint(const Tensor& /* tensor */) {
+Tensor StubBackend::rint(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::absolute(const Tensor& /* tensor */) {
+Tensor StubBackend::absolute(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::sigmoid(const Tensor& /* tensor */) {
+Tensor StubBackend::sigmoid(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::erf(const Tensor& /* tensor */) {
+Tensor StubBackend::erf(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::flip(const Tensor& /* tensor */, const unsigned /* dim */) {
+void StubBackend::flip(
+    Tensor& /* out */,
+    const Tensor& /* tensor */,
+    const unsigned /* dim */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::clip(
+void StubBackend::clip(
+    Tensor& /* out */,
     const Tensor& /* tensor */,
     const Tensor& /* low */,
-    const Tensor& /* high */) {
+    const Tensor& /* high */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::roll(
+void StubBackend::roll(
+    Tensor& /* out */,
     const Tensor& /* tensor */,
     const int /* shift */,
-    const unsigned /* axis */) {
+    const unsigned /* axis */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::isnan(const Tensor& /* tensor */) {
+Tensor StubBackend::isnan(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::isinf(const Tensor& /* tensor */) {
+Tensor StubBackend::isinf(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::sign(const Tensor& /* tensor */) {
+Tensor StubBackend::sign(
+    const Tensor& /* tensor */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::tril(const Tensor& /* tensor */) {
+void StubBackend::tril(
+    Tensor& /* out */,
+    const Tensor& /* tensor */,
+    int /* diagonal */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::triu(const Tensor& /* tensor */) {
+void StubBackend::triu(
+    Tensor& /* out */,
+    const Tensor& /* tensor */,
+    int /* diagonal */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::where(
+void StubBackend::where(
+    Tensor& /* out */,
     const Tensor& /* condition */,
     const Tensor& /* x */,
-    const Tensor& /* y */) {
+    const Tensor& /* y */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
@@ -274,14 +355,17 @@ void StubBackend::topk(
     const Tensor& /* input */,
     const unsigned /* k */,
     const Dim /* axis */,
-    const SortMode /* sortMode */) {
+    const SortMode /* sortMode */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::sort(
+void StubBackend::sort(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const Dim /* axis */,
-    const SortMode /* sortMode */) {
+    const SortMode /* sortMode */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
@@ -290,100 +374,81 @@ void StubBackend::sort(
     Tensor& /* indices */,
     const Tensor& /* input */,
     const Dim /* axis */,
-    const SortMode /* sortMode */) {
+    const SortMode /* sortMode */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::argsort(
+void StubBackend::argsort(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const Dim /* axis */,
-    const SortMode /* sortMode */) {
+    const SortMode /* sortMode */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 /************************** Binary Operators ***************************/
-#define FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, TYPE)                            \
-  Tensor StubBackend::FUNC(const Tensor& /* a */, TYPE /* rhs */) {         \
-    throw std::runtime_error(                                               \
-        "StubBackend::" + std::string(#FUNC) + " unimplemented for type " + \
-        std::string(#TYPE));                                                \
-  }                                                                         \
-  Tensor StubBackend::FUNC(TYPE /* lhs */, const Tensor& /* a */) {         \
-    throw std::runtime_error(                                               \
-        "StubBackend::" + std::string(#FUNC) + " unimplemented for type " + \
-        std::string(#TYPE));                                                \
-  }
-
-#define FL_AF_BINARY_OP_LITERALS_DEF(FUNC, OP)                   \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const bool&);               \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const int&);                \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const unsigned&);           \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const char&);               \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const unsigned char&);      \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const long&);               \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const unsigned long&);      \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const long long&);          \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const unsigned long long&); \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const double&);             \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const float&);              \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const short&);              \
-  FL_AF_BINARY_OP_TYPE_DEF(FUNC, OP, const unsigned short&);
-
-// Operations on fl::Tensor call the respective operator overloads that are
-// already defined on af::arrays
-#define FL_AF_BINARY_OP_DEF(OP, FUNC)                                          \
-  Tensor StubBackend::FUNC(const Tensor& /* lhs */, const Tensor& /* rhs */) { \
+#define FL_STUB_BINARY_OP_DEF(FUNC)                                            \
+  Tensor StubBackend::FUNC(                                                    \
+      const Tensor& /* lhs */,                                                 \
+      const Tensor& /* rhs */,                                                 \
+      std::shared_ptr<const Stream> /* stream */) {                            \
     throw std::runtime_error(                                                  \
         "StubBackend::" + std::string(#FUNC) +                                 \
         " unimplemented for two-Tensor inputs.");                              \
-  }                                                                            \
-  FL_AF_BINARY_OP_LITERALS_DEF(FUNC, OP);
+  }
 
-// Definitions
-// Since ArrayFire implements operator overloads, map both fl::Tensor
-// functions and fl::Tensor operator overloads back to the af::array
-// overloads.
-FL_AF_BINARY_OP_DEF(+, add);
-FL_AF_BINARY_OP_DEF(-, sub);
-FL_AF_BINARY_OP_DEF(*, mul);
-FL_AF_BINARY_OP_DEF(/, div);
-FL_AF_BINARY_OP_DEF(==, eq);
-FL_AF_BINARY_OP_DEF(!=, neq);
-FL_AF_BINARY_OP_DEF(<, lessThan);
-FL_AF_BINARY_OP_DEF(<=, lessThanEqual);
-FL_AF_BINARY_OP_DEF(>, greaterThan);
-FL_AF_BINARY_OP_DEF(>=, greaterThanEqual);
-FL_AF_BINARY_OP_DEF(||, logicalOr);
-FL_AF_BINARY_OP_DEF(&&, logicalAnd);
-FL_AF_BINARY_OP_DEF(%, mod);
-FL_AF_BINARY_OP_DEF(&, bitwiseAnd);
-FL_AF_BINARY_OP_DEF(|, bitwiseOr);
-FL_AF_BINARY_OP_DEF(^, bitwiseXor);
-FL_AF_BINARY_OP_DEF(<<, lShift);
-FL_AF_BINARY_OP_DEF(>>, rShift);
-#undef FL_AF_BINARY_OP_DEF
-#undef FL_AF_BINARY_OP_TYPE_DEF
-#undef FL_AF_BINARY_OP_LITERALS_DEF
+FL_STUB_BINARY_OP_DEF(add);
+FL_STUB_BINARY_OP_DEF(sub);
+FL_STUB_BINARY_OP_DEF(mul);
+FL_STUB_BINARY_OP_DEF(div);
+FL_STUB_BINARY_OP_DEF(eq);
+FL_STUB_BINARY_OP_DEF(neq);
+FL_STUB_BINARY_OP_DEF(lessThan);
+FL_STUB_BINARY_OP_DEF(lessThanEqual);
+FL_STUB_BINARY_OP_DEF(greaterThan);
+FL_STUB_BINARY_OP_DEF(greaterThanEqual);
+FL_STUB_BINARY_OP_DEF(logicalOr);
+FL_STUB_BINARY_OP_DEF(logicalAnd);
+FL_STUB_BINARY_OP_DEF(mod);
+FL_STUB_BINARY_OP_DEF(bitwiseAnd);
+FL_STUB_BINARY_OP_DEF(bitwiseOr);
+FL_STUB_BINARY_OP_DEF(bitwiseXor);
+FL_STUB_BINARY_OP_DEF(lShift);
+FL_STUB_BINARY_OP_DEF(rShift);
+#undef FL_STUB_BINARY_OP_DEF
 
-Tensor StubBackend::minimum(const Tensor& /* lhs */, const Tensor& /* rhs */) {
+Tensor StubBackend::minimum(
+    const Tensor& /* lhs */,
+    const Tensor& /* rhs */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::maximum(const Tensor& /* lhs */, const Tensor& /* rhs */) {
+Tensor StubBackend::maximum(
+    const Tensor& /* lhs */,
+    const Tensor& /* rhs */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::power(const Tensor& /* lhs */, const Tensor& /* rhs */) {
+Tensor StubBackend::power(
+    const Tensor& /* lhs */,
+    const Tensor& /* rhs */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 /************************** BLAS ***************************/
 
-Tensor StubBackend::matmul(
+void StubBackend::matmul(
+    Tensor& /* out */,
     const Tensor& /* lhs */,
     const Tensor& /* rhs */,
     MatrixProperty /* lhsProp */,
-    MatrixProperty /* rhsProp */) {
+    MatrixProperty /* rhsProp */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
@@ -392,14 +457,16 @@ Tensor StubBackend::matmul(
 Tensor StubBackend::amin(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::amax(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
@@ -408,7 +475,8 @@ void StubBackend::min(
     Tensor& /* indices */,
     const Tensor& /* input */,
     const unsigned /* axis */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
@@ -417,96 +485,135 @@ void StubBackend::max(
     Tensor& /* indices */,
     const Tensor& /* input */,
     const unsigned /* axis */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::sum(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::cumsum(
-    const Tensor& /* input */,
-    const unsigned /* axis */) {
-  FL_STUB_BACKEND_UNIMPLEMENTED;
-}
-
-Tensor StubBackend::argmax(
+void StubBackend::cumsum(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const unsigned /* axis */,
-    const bool /* keepDims */) {
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::argmin(
+void StubBackend::argmax(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const unsigned /* axis */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+void StubBackend::argmin(
+    Tensor& /* out */,
+    const Tensor& /* input */,
+    const unsigned /* axis */,
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::mean(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::median(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::var(
+void StubBackend::var(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
     const bool /* bias */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::std(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
-Tensor StubBackend::norm(
+void StubBackend::norm(
+    Tensor& /* out */,
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
     double /* p */ /* = 2 */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::countNonzero(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::any(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 Tensor StubBackend::all(
     const Tensor& /* input */,
     const std::vector<int>& /* axes */,
-    const bool /* keepDims */) {
+    const bool /* keepDims */,
+    std::shared_ptr<const Stream> /* stream */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+void StubBackend::copy(
+    Tensor& /* dst */, const Tensor& /* src */, const Stream& /* stream */) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 
 void StubBackend::print(const Tensor& /* tensor */) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+void StubBackend::binary(Tensor& /* out */, BinaryOp, const Tensor&,
+    const Tensor&, std::shared_ptr<const Stream>) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+void StubBackend::unary(Tensor& /* out */, UnaryOp, const Tensor&,
+    std::shared_ptr<const Stream>) {
+  FL_STUB_BACKEND_UNIMPLEMENTED;
+}
+
+void StubBackend::reduction(Tensor& /* out */, ReductionOp, const Tensor&,
+    const std::vector<int>&, bool,
+    std::shared_ptr<const Stream>) {
   FL_STUB_BACKEND_UNIMPLEMENTED;
 }
 

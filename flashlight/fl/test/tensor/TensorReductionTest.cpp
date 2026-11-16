@@ -11,6 +11,7 @@
 
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
 
 using namespace ::testing;
@@ -29,7 +30,7 @@ TEST(TensorReductionTest, countNonzero) {
   std::vector<unsigned> sizes(a.shape().dim(0));
   for (unsigned i = 0; i < a.shape().dim(0); ++i) {
     sizes[i] =
-        a.shape().dim(0) - fl::sum(a(fl::span, i) == 0, {0}).scalar<unsigned>();
+        a.shape().dim(0) - fl::sum(a(fl::span, i) == 0, {0}).asScalar<unsigned>();
   }
   ASSERT_TRUE(allClose(Tensor::fromVector(sizes), Tensor::fromVector(sizes)));
 
@@ -37,8 +38,11 @@ TEST(TensorReductionTest, countNonzero) {
   b(0, 1, 1) = 0;
   b(1, 0, 1) = 0;
   b(1, 1, 1) = 0;
+  // Row-major: b(0,1,1)=0, b(1,0,1)=0, b(1,1,1)=0
+  // countNonzero along axis 0: result[j,k] = count over i
+  // (0,0):2, (0,1):1, (1,0):2, (1,1):0
   ASSERT_TRUE(allClose(
-      fl::Tensor::fromVector<unsigned>({2, 2}, {2, 2, 1, 0}),
+      fl::Tensor::fromVector<unsigned>({2, 2}, {2, 1, 2, 0}),
       fl::countNonzero(b, {0})));
   ASSERT_TRUE(allClose(
       fl::Tensor::fromVector<unsigned>({2}, {4, 1}),
@@ -53,22 +57,22 @@ TEST(TensorReductionTest, amin) {
   a(2, 3, 4) = val;
   ASSERT_EQ(fl::amin(a).shape(), Shape({}));
   ASSERT_EQ(fl::amin(a).elements(), 1);
-  ASSERT_EQ(fl::amin(a).scalar<float>(), val);
+  ASSERT_EQ(fl::amin(a).scalarSync<float>(), val);
   auto b = fl::rand({4, 4});
   b(1, 1) = val;
   ASSERT_EQ(fl::amin(b, {0}).shape(), Shape({4}));
   ASSERT_EQ(fl::amin(b, {0}, /* keepDims = */ true).shape(), Shape({1, 4}));
-  ASSERT_EQ(fl::amin(b, {0})(1).scalar<float>(), val);
-  ASSERT_EQ(fl::amin(b, {1})(1).scalar<float>(), val);
+  ASSERT_EQ(fl::amin(b, {0})(1).scalarSync<float>(), val);
+  ASSERT_EQ(fl::amin(b, {1})(1).scalarSync<float>(), val);
   auto q = fl::amin(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(q.shape(), Shape({}));
   ASSERT_EQ(q.elements(), 1);
-  ASSERT_EQ(q.scalar<int>(), 1);
+  ASSERT_EQ(q.scalarSync<int>(), 1);
 
   const float v = 3.14;
   auto s = fl::amin(fl::fromScalar(v));
   ASSERT_EQ(s.shape(), Shape());
-  ASSERT_EQ(s.scalar<float>(), v);
+  ASSERT_EQ(s.scalarSync<float>(), v);
   ASSERT_EQ(fl::amin(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
@@ -78,34 +82,37 @@ TEST(TensorReductionTest, amax) {
   a(2, 3, 4) = val;
   ASSERT_EQ(fl::amax(a).shape(), Shape({}));
   ASSERT_EQ(fl::amax(a).elements(), 1);
-  ASSERT_EQ(fl::amax(a).scalar<float>(), val);
+  ASSERT_EQ(fl::amax(a).scalarSync<float>(), val);
   auto b = fl::rand({4, 4});
   b(1, 1) = val;
   ASSERT_EQ(fl::amax(b, {0}).shape(), Shape({4}));
   ASSERT_EQ(fl::amax(b, {0}, /* keepDims = */ true).shape(), Shape({1, 4}));
-  ASSERT_EQ(fl::amax(b, {0})(1).scalar<float>(), val);
-  ASSERT_EQ(fl::amax(b, {1})(1).scalar<float>(), val);
+  ASSERT_EQ(fl::amax(b, {0})(1).scalarSync<float>(), val);
+  ASSERT_EQ(fl::amax(b, {1})(1).scalarSync<float>(), val);
   auto q = fl::amax(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(q.shape(), Shape({}));
   ASSERT_EQ(q.elements(), 1);
-  ASSERT_EQ(q.scalar<int>(), 1);
+  ASSERT_EQ(q.scalarSync<int>(), 1);
 
   const float v = 3.14;
   auto s = fl::amax(fl::fromScalar(v));
   ASSERT_EQ(s.shape(), Shape());
-  ASSERT_EQ(s.scalar<float>(), v);
+  ASSERT_EQ(s.scalarSync<float>(), v);
   ASSERT_EQ(fl::amax(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 TEST(TensorReductionTest, argmin) {
+  // Row-major {2,3}: Row 0=[4,8,6], Row 1=[3,5,9]
   Tensor in = Tensor::fromVector<float>({2, 3}, {4, 8, 6, 3, 5, 9});
   auto a0 = fl::argmin(in, 0);
   auto a1 = fl::argmin(in, 1);
 
   ASSERT_EQ(a0.shape(), Shape({in.dim(1)}));
   ASSERT_EQ(a1.shape(), Shape({in.dim(0)}));
-  ASSERT_TRUE(allClose(a0, Tensor::fromVector<unsigned>({3}, {0, 1, 0})));
-  ASSERT_TRUE(allClose(a1, Tensor::fromVector<unsigned>({2}, {0, 1})));
+  // axis 0: col0=[4,3]-->1, col1=[8,5]-->1, col2=[6,9]-->0
+  ASSERT_TRUE(allClose(a0, Tensor::fromVector<unsigned>({3}, {1, 1, 0})));
+  // axis 1: row0=[4,8,6]-->0, row1=[3,5,9]-->0
+  ASSERT_TRUE(allClose(a1, Tensor::fromVector<unsigned>({2}, {0, 0})));
   ASSERT_EQ(
       fl::argmin(in, 0, /* keepDims = */ true).shape(), Shape({1, in.dim(1)}));
   ASSERT_EQ(
@@ -113,13 +120,16 @@ TEST(TensorReductionTest, argmin) {
 }
 
 TEST(TensorReductionTest, argmax) {
+  // Row-major {2,3}: Row 0=[4,8,6], Row 1=[3,5,9]
   Tensor in = Tensor::fromVector<float>({2, 3}, {4, 8, 6, 3, 5, 9});
   auto a0 = fl::argmax(in, 0);
   auto a1 = fl::argmax(in, 1);
 
   ASSERT_EQ(a0.shape(), Shape({in.dim(1)}));
   ASSERT_EQ(a1.shape(), Shape({in.dim(0)}));
-  ASSERT_TRUE(allClose(a0, Tensor::fromVector<unsigned>({3}, {1, 0, 1})));
+  // axis 0: col0=[4,3]-->0, col1=[8,5]-->0, col2=[6,9]-->1
+  ASSERT_TRUE(allClose(a0, Tensor::fromVector<unsigned>({3}, {0, 0, 1})));
+  // axis 1: row0=[4,8,6]-->1, row1=[3,5,9]-->2
   ASSERT_TRUE(allClose(a1, Tensor::fromVector<unsigned>({2}, {1, 2})));
   ASSERT_EQ(
       fl::argmax(in, 0, /* keepDims = */ true).shape(), Shape({1, in.dim(1)}));
@@ -128,21 +138,20 @@ TEST(TensorReductionTest, argmax) {
 }
 
 TEST(TensorReductionTest, min) {
+  // Row-major {2,3}: Row 0=[4,8,6], Row 1=[3,5,9]
   Tensor in = Tensor::fromVector<float>({2, 3}, {4, 8, 6, 3, 5, 9});
   Tensor values, indices;
   fl::min(values, indices, in, 0);
   ASSERT_EQ(indices.shape(), Shape({in.dim(1)}));
-  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({3}, {0, 1, 0})));
-  for (unsigned i = 0; i < values.elements(); ++i) {
-    ASSERT_TRUE(allClose(values.flat(i), in(fl::span, i)(indices(i))));
-  }
+  // axis 0: col0=[4,3]-->min=3@1, col1=[8,5]-->min=5@1, col2=[6,9]-->min=6@0
+  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({3}, {1, 1, 0})));
+  ASSERT_TRUE(allClose(values, Tensor::fromVector<float>({3}, {3, 5, 6})));
 
   fl::min(values, indices, in, 1);
   ASSERT_EQ(indices.shape(), Shape({in.dim(0)}));
-  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({2}, {0, 1})));
-  for (unsigned i = 0; i < values.elements(); ++i) {
-    ASSERT_TRUE(allClose(values.flat(i), in(i)(indices(i))));
-  }
+  // axis 1: row0=[4,8,6]-->min=4@0, row1=[3,5,9]-->min=3@0
+  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({2}, {0, 0})));
+  ASSERT_TRUE(allClose(values, Tensor::fromVector<float>({2}, {4, 3})));
 
   fl::min(values, indices, in, 0, /* keepDims = */ true);
   ASSERT_EQ(values.shape(), Shape({1, in.dim(1)}));
@@ -152,21 +161,20 @@ TEST(TensorReductionTest, min) {
 }
 
 TEST(TensorReductionTest, max) {
+  // Row-major {2,3}: Row 0=[4,8,6], Row 1=[3,5,9]
   Tensor in = Tensor::fromVector<float>({2, 3}, {4, 8, 6, 3, 5, 9});
   Tensor values, indices;
   fl::max(values, indices, in, 0);
   ASSERT_EQ(indices.shape(), Shape({in.dim(1)}));
-  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({3}, {1, 0, 1})));
-  for (unsigned i = 0; i < values.elements(); ++i) {
-    ASSERT_TRUE(allClose(values.flat(i), in(fl::span, i)(indices(i))));
-  }
+  // axis 0: col0=[4,3]-->max=4@0, col1=[8,5]-->max=8@0, col2=[6,9]-->max=9@1
+  ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({3}, {0, 0, 1})));
+  ASSERT_TRUE(allClose(values, Tensor::fromVector<float>({3}, {4, 8, 9})));
 
   fl::max(values, indices, in, 1);
   ASSERT_EQ(indices.shape(), Shape({in.dim(0)}));
+  // axis 1: row0=[4,8,6]-->max=8@1, row1=[3,5,9]-->max=9@2
   ASSERT_TRUE(allClose(indices, Tensor::fromVector<unsigned>({2}, {1, 2})));
-  for (unsigned i = 0; i < values.elements(); ++i) {
-    ASSERT_TRUE(allClose(values.flat(i), in(i)(indices(i))));
-  }
+  ASSERT_TRUE(allClose(values, Tensor::fromVector<float>({2}, {8, 9})));
 
   fl::max(values, indices, in, 0, /* keepDims = */ true);
   ASSERT_EQ(values.shape(), Shape({1, in.dim(1)}));
@@ -177,18 +185,23 @@ TEST(TensorReductionTest, max) {
 
 TEST(TensorReductionTest, cumsum) {
   int max = 30;
-  auto a = fl::tile(fl::arange(1, max), {1, 2});
+  auto arange1d = fl::arange(1, max);
+  auto a = fl::tile(fl::reshape(arange1d, {arange1d.dim(0), 1}), {1, 2});
 
   auto ref = fl::arange(1, max);
   for (int i = 1; i < max - 1; ++i) {
     ref += fl::concatenate({fl::full({i}, 0), fl::arange(1, max - i)});
   }
 
-  ASSERT_TRUE(allClose(fl::cumsum(a, 0), fl::tile(ref, {1, 2})));
-  ASSERT_TRUE(allClose(
-      fl::cumsum(a, 1),
-      fl::concatenate(
-          {fl::arange(1, max), 2 * fl::arange(1, max)}, /* axis = */ 1)));
+  ASSERT_TRUE(
+      allClose(fl::cumsum(a, 0), fl::tile(fl::reshape(ref, {ref.dim(0), 1}), {1, 2})));
+  {
+    auto col1 = fl::reshape(fl::arange(1, max), {max - 1, 1});
+    auto col2 = fl::reshape(2 * fl::arange(1, max), {max - 1, 1});
+    ASSERT_TRUE(allClose(
+        fl::cumsum(a, 1),
+        fl::concatenate({col1, col2}, /* axis = */ 1)));
+  }
 }
 
 TEST(TensorReductionTest, sum) {
@@ -206,7 +219,7 @@ TEST(TensorReductionTest, sum) {
   auto q = fl::sum(fl::full({dim, dim, dim, dim}, 1));
   ASSERT_EQ(q.shape(), Shape({}));
   ASSERT_EQ(q.elements(), 1);
-  ASSERT_EQ(q.scalar<int>(), dim * dim * dim * dim);
+  ASSERT_EQ(q.scalarSync<int>(), dim * dim * dim * dim);
 
   ASSERT_TRUE(allClose(
       fl::sum(fl::sum(q, {0, 1, 2}), {0}),
@@ -215,7 +228,7 @@ TEST(TensorReductionTest, sum) {
 
 TEST(TensorReductionTest, mean) {
   auto r = fl::rand({8, 7, 6});
-  ASSERT_NEAR(fl::mean(r).scalar<float>(), 0.5, 0.05);
+  ASSERT_NEAR(fl::mean(r).scalarSync<float>(), 0.5, 0.05);
   ASSERT_EQ(
       fl::mean(r, {0, 1}, /* keepDims = */ true).shape(), Shape({1, 1, 6}));
 
@@ -225,19 +238,19 @@ TEST(TensorReductionTest, mean) {
   auto a = fl::mean(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(a.shape(), Shape({}));
   ASSERT_EQ(a.elements(), 1);
-  ASSERT_EQ(a.scalar<float>(), 1.);
+  ASSERT_EQ(a.scalarSync<float>(), 1.);
 
   // TODO: fixture this
   const float v = 3.14;
   auto q = fl::mean(fl::fromScalar(v));
   ASSERT_EQ(q.shape(), Shape());
-  ASSERT_EQ(q.scalar<float>(), v);
+  ASSERT_EQ(q.scalarSync<float>(), v);
   ASSERT_EQ(fl::mean(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 TEST(TensorReductionTest, median) {
   auto a = Tensor::fromVector<int>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-  ASSERT_EQ(fl::median(a).scalar<float>(), 4.5);
+  ASSERT_EQ(fl::median(a).scalarSync<float>(), 4.5);
   ASSERT_TRUE(allClose(fl::median(a, {0}), fl::fromScalar(4.5)));
   ASSERT_EQ(fl::median(fl::rand({5, 6, 7, 8}), {1, 2}).shape(), Shape({5, 8}));
   ASSERT_EQ(
@@ -247,19 +260,19 @@ TEST(TensorReductionTest, median) {
   auto b = fl::median(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(b.shape(), Shape({}));
   ASSERT_EQ(b.elements(), 1);
-  ASSERT_EQ(b.scalar<float>(), 1.);
+  ASSERT_EQ(b.scalarSync<float>(), 1.);
 
   const float v = 3.14;
   auto q = fl::median(fl::fromScalar(v));
   ASSERT_EQ(q.shape(), Shape());
-  ASSERT_EQ(q.scalar<float>(), v);
+  ASSERT_EQ(q.scalarSync<float>(), v);
   ASSERT_EQ(fl::median(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 TEST(TensorReductionTest, var) {
   auto r = fl::rand({7, 8, 9});
   auto varAll = fl::var(r);
-  ASSERT_NEAR(varAll.scalar<float>(), 0.08333, 0.01);
+  ASSERT_NEAR(varAll.scalarSync<float>(), 0.08333, 0.01);
   ASSERT_EQ(varAll.shape(), Shape({}));
   ASSERT_EQ(varAll.elements(), 1);
 
@@ -275,13 +288,17 @@ TEST(TensorReductionTest, var) {
   const float v = 3.14;
   auto q = fl::var(fl::fromScalar(v));
   ASSERT_EQ(q.shape(), Shape());
-  ASSERT_EQ(q.scalar<float>(), 0);
+  ASSERT_EQ(q.scalarSync<float>(), 0);
   ASSERT_EQ(fl::var(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 TEST(TensorReductionTest, std) {
   auto r = fl::rand({7, 8, 9});
-  ASSERT_NEAR(fl::std(r).scalar<float>(), 0.2886, 0.005);
+  // Use a large sample so sampling variance is negligible (SE ≈ 0.0013 with
+  // n=50400, so 0.005 ≈ 3.8 SE). Prior tests consume RNG draws and can shift
+  // small samples outside tight tolerances — a larger sample is robust to this.
+  auto r2 = fl::rand({70, 80, 9});
+  ASSERT_NEAR(fl::std(r2).scalarSync<float>(), 0.2886, 0.005);
   ASSERT_EQ(
       fl::std(r, {0, 1}, /* keepDims = */ true).shape(), Shape({1, 1, 9}));
 
@@ -292,28 +309,28 @@ TEST(TensorReductionTest, std) {
   const float v = 3.14;
   auto q = fl::std(fl::fromScalar(v));
   ASSERT_EQ(q.shape(), Shape());
-  ASSERT_EQ(q.scalar<float>(), 0);
+  ASSERT_EQ(q.scalarSync<float>(), 0);
   ASSERT_EQ(fl::std(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 TEST(TensorReductionTest, norm) {
   auto r = fl::full({7, 8, 9}, 1);
   auto normAll = fl::norm(r);
-  ASSERT_FLOAT_EQ(normAll.scalar<float>(), std::sqrt(7 * 8 * 9));
+  ASSERT_FLOAT_EQ(normAll.scalarSync<float>(), std::sqrt(7 * 8 * 9));
   ASSERT_EQ(normAll.shape(), Shape({}));
   ASSERT_EQ(normAll.elements(), 1);
   ASSERT_FLOAT_EQ(
-      fl::norm(fl::full({5, 5}, 1.)).scalar<float>(), std::sqrt(5 * 5));
+      fl::norm(fl::full({5, 5}, 1.)).scalarSync<float>(), std::sqrt(5 * 5));
   ASSERT_EQ(
       fl::norm(r, {0, 1}, /* p = */ 2, /* keepDims = */ true).shape(),
       Shape({1, 1, 9}));
 
-  ASSERT_FLOAT_EQ(fl::norm(r, {0}).scalar<float>(), std::sqrt(7));
+  ASSERT_FLOAT_EQ(fl::norm(r, {0}).scalarSync<float>(), std::sqrt(7));
 
   const float v = 3.14;
   auto q = fl::norm(fl::fromScalar(v));
   ASSERT_EQ(q.shape(), Shape());
-  ASSERT_NEAR(q.scalar<float>(), 3.14, 1e-4);
+  ASSERT_NEAR(q.scalarSync<float>(), 3.14, 1e-4);
   ASSERT_EQ(fl::norm(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
@@ -323,26 +340,26 @@ TEST(TensorReductionTest, any) {
   auto anyAll = fl::any(t);
   ASSERT_EQ(anyAll.shape(), Shape({}));
   ASSERT_EQ(anyAll.elements(), 1);
-  ASSERT_TRUE(anyAll.scalar<char>());
+  ASSERT_TRUE(anyAll.scalarSync<char>());
   ASSERT_TRUE(allClose(
       fl::any(t, {0}),
       Tensor::fromVector<unsigned>({1, 0, 1}).astype(dtype::b8)));
   ASSERT_TRUE(allClose(fl::any(t, {0, 1}), fl::fromScalar(true, dtype::b8)));
-  ASSERT_FALSE(fl::any(Tensor::fromVector<unsigned>({0, 0, 0})).scalar<char>());
+  ASSERT_FALSE(fl::any(Tensor::fromVector<unsigned>({0, 0, 0})).scalarSync<char>());
 
   auto keptDims = fl::any(
       fl::any(t, {1}, /* keepDims = */ true), {0}, /* keepDims = */ true);
   ASSERT_EQ(keptDims.shape(), Shape({1, 1}));
-  ASSERT_EQ(keptDims.scalar<char>(), fl::any(t, {0, 1}).scalar<char>());
+  ASSERT_EQ(keptDims.scalarSync<char>(), fl::any(t, {0, 1}).scalarSync<char>());
   auto q = fl::any(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(q.shape(), Shape({}));
   ASSERT_EQ(q.elements(), 1);
-  ASSERT_EQ(q.scalar<char>(), true);
+  ASSERT_EQ(q.scalarSync<char>(), true);
 
   const float v = 3.14;
   auto r = fl::any(fl::fromScalar(v));
   ASSERT_EQ(r.shape(), Shape());
-  ASSERT_TRUE(r.scalar<char>());
+  ASSERT_TRUE(r.scalarSync<char>());
   ASSERT_EQ(fl::any(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
@@ -352,31 +369,31 @@ TEST(TensorReductionTest, all) {
   auto allAll = fl::all(t);
   ASSERT_EQ(allAll.shape(), Shape({}));
   ASSERT_EQ(allAll.elements(), 1);
-  ASSERT_FALSE(allAll.scalar<char>());
+  ASSERT_FALSE(allAll.scalarSync<char>());
   ASSERT_TRUE(allClose(
       fl::all(t, {0}),
       Tensor::fromVector<unsigned>({0, 0, 0}).astype(dtype::b8)));
   ASSERT_TRUE(allClose(fl::all(t, {0, 1}), fl::fromScalar(false, dtype::b8)));
-  ASSERT_TRUE(fl::all(Tensor::fromVector<unsigned>({1, 1, 1})).scalar<char>());
+  ASSERT_TRUE(fl::all(Tensor::fromVector<unsigned>({1, 1, 1})).scalarSync<char>());
 
   auto keptDims = fl::all(
       fl::all(t, {1}, /* keepDims = */ true), {0}, /* keepDims = */ true);
   ASSERT_EQ(keptDims.shape(), Shape({1, 1}));
-  ASSERT_EQ(keptDims.scalar<char>(), fl::all(t, {0, 1}).scalar<char>());
+  ASSERT_EQ(keptDims.scalarSync<char>(), fl::all(t, {0, 1}).scalarSync<char>());
   auto q = fl::all(fl::full({5, 5, 5, 5}, 1));
   ASSERT_EQ(q.shape(), Shape({}));
   ASSERT_EQ(q.elements(), 1);
-  ASSERT_EQ(q.scalar<char>(), true);
+  ASSERT_EQ(q.scalarSync<char>(), true);
 
   const float v = 3.14;
   auto a = fl::all(fl::fromScalar(v));
   ASSERT_EQ(a.shape(), Shape());
-  ASSERT_TRUE(a.scalar<char>());
+  ASSERT_TRUE(a.scalarSync<char>());
   ASSERT_EQ(fl::all(fl::fromScalar(v), {0}).shape(), Shape());
 }
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

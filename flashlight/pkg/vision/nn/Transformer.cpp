@@ -44,11 +44,11 @@ namespace fl::pkg::vision {
 
 // query [ E X B X L ]
 // values and keys [ E X B X S ]
-fl::Variable transformerMultiheadAttention(
-    const fl::Variable& query,
-    const fl::Variable& key,
-    const fl::Variable& value,
-    const fl::Variable& keyPaddingMask,
+fl::Tensor transformerMultiheadAttention(
+    const fl::Tensor& query,
+    const fl::Tensor& key,
+    const fl::Tensor& value,
+    const fl::Tensor& keyPaddingMask,
     const int32_t nHead,
     const double pDropout) {
   int32_t bsz = query.dim(1);
@@ -57,26 +57,26 @@ fl::Variable transformerMultiheadAttention(
   int32_t tgtLen = query.dim(2);
   int32_t srcLen = key.dim(2);
 
-  auto q = moddims(query, {headDim, nHead, bsz, tgtLen});
-  auto v = moddims(value, {headDim, nHead, bsz, srcLen});
-  auto k = moddims(key, {headDim, nHead, bsz, srcLen});
+  auto q = autograd::reshape(query, {headDim, nHead, bsz, tgtLen});
+  auto v = autograd::reshape(value, {headDim, nHead, bsz, srcLen});
+  auto k = autograd::reshape(key, {headDim, nHead, bsz, srcLen});
   // Reorder so that the "Sequence" is along the first dimension,
   // the embedding is along the zeroth dimension
-  q = reorder(q, {0, 3, 1, 2});
-  v = reorder(v, {0, 3, 1, 2});
-  k = reorder(k, {0, 3, 1, 2});
+  q = autograd::transpose(q, {0, 3, 1, 2});
+  v = autograd::transpose(v, {0, 3, 1, 2});
+  k = autograd::transpose(k, {0, 3, 1, 2});
 
-  auto scores = matmulTN(q, k);
+  auto scores = autograd::matmul(q, k, MatrixProperty::Transpose);
 
   if (!keyPaddingMask.isEmpty()) {
     scores = scores +
-        tileAs(moddims(log(keyPaddingMask), {1, srcLen, 1, bsz}), scores);
+        autograd::tileAs(autograd::reshape(autograd::log(keyPaddingMask), {1, srcLen, 1, bsz}), scores);
   }
 
-  auto attn = dropout(softmax(scores, 1), pDropout);
-  auto result = matmulNT(attn.astype(v.type()), v);
-  result = moddims(result, {tgtLen, modelDim, bsz});
-  result = reorder(result, {1, 2, 0});
+  auto attn = autograd::dropout(autograd::softmax(scores, 1), pDropout);
+  auto result = autograd::matmul(attn.astype(v.type()), v, MatrixProperty::None, MatrixProperty::Transpose);
+  result = autograd::reshape(result, {tgtLen, modelDim, bsz});
+  result = autograd::transpose(result, {1, 2, 0});
   return result;
 }
 
@@ -126,11 +126,11 @@ std::unique_ptr<Module> MultiheadAttention::clone() const {
   return std::make_unique<MultiheadAttention>(*this);
 }
 
-std::vector<Variable> MultiheadAttention::forward(
-    const Variable& queries,
-    const Variable& keys,
-    const Variable& values,
-    const Variable& keyPaddingMask) {
+std::vector<Tensor> MultiheadAttention::forward(
+    const Tensor& queries,
+    const Tensor& keys,
+    const Tensor& values,
+    const Tensor& keyPaddingMask) {
   assert(queries.dim(0) == keys.dim(0));
   assert(queries.dim(0) == values.dim(0));
   assert(queries.dim(1) == keys.dim(1));
@@ -156,12 +156,12 @@ std::vector<Variable> MultiheadAttention::forward(
   result = (*wf_)(result);
 
   assert(result.shape() == queries.shape());
-  std::vector<Variable> results = {result};
+  std::vector<Tensor> results = {result};
   return results;
 };
 
-std::vector<Variable> MultiheadAttention::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> MultiheadAttention::forward(
+    const std::vector<Tensor>& input) {
   assert(input.size() == 4);
   return this->forward(input[0], input[1], input[2], input[3]);
 }
@@ -229,24 +229,24 @@ void TransformerBaseLayer::createLayers() {
   add(norm2_);
 };
 
-Variable TransformerBaseLayer::mlp(const Variable& in) {
+Tensor TransformerBaseLayer::mlp(const Tensor& in) {
   float pDropout = train_ ? pDropout_ : 0.0;
-  return (*w2_)(dropout(relu((*w1_)(in)), pDropout));
+  return (*w2_)(autograd::dropout(autograd::relu((*w1_)(in)), pDropout));
 }
 
-Variable TransformerBaseLayer::withPosEmbed(
-    const Variable& input,
-    const Variable& pos) {
+Tensor TransformerBaseLayer::withPosEmbed(
+    const Tensor& input,
+    const Tensor& pos) {
   if (pos.isEmpty()) {
     return input;
   }
   return input + pos;
 }
 
-Variable TransformerBaseLayer::selfAttention(
-    const Variable& input,
-    const Variable& pos,
-    const Variable& keyPaddingMask) {
+Tensor TransformerBaseLayer::selfAttention(
+    const Tensor& input,
+    const Tensor& pos,
+    const Tensor& keyPaddingMask) {
   auto k = withPosEmbed(input, pos);
   auto q = withPosEmbed(input, pos);
   return self_attn_->forward(q, k, input, keyPaddingMask)[0];
@@ -263,8 +263,8 @@ std::unique_ptr<Module> TransformerEncoderLayer::clone() const {
   return std::make_unique<TransformerEncoderLayer>(*this);
 }
 
-std::vector<Variable> TransformerEncoderLayer::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> TransformerEncoderLayer::forward(
+    const std::vector<Tensor>& input) {
   auto src = input[0];
   auto mask = input[1];
   auto pos = input[2];
@@ -272,10 +272,10 @@ std::vector<Variable> TransformerEncoderLayer::forward(
   float pDropout = train_ ? pDropout_ : 0.0f;
 
   auto src2 = this->selfAttention(src, pos, mask);
-  src = src + dropout(src2, pDropout);
+  src = src + autograd::dropout(src2, pDropout);
   src = (*norm1_)(src);
   src2 = mlp(src);
-  src = src + dropout(src2, pDropout);
+  src = src + autograd::dropout(src2, pDropout);
   src = (*norm2_)(src);
 
   return {src, mask, pos};
@@ -363,41 +363,41 @@ std::unique_ptr<Module> TransformerDecoderLayer::clone() const {
   return std::make_unique<TransformerDecoderLayer>(*this);
 }
 
-Variable TransformerDecoderLayer::mlp(const Variable& in) {
+Tensor TransformerDecoderLayer::mlp(const Tensor& in) {
   float pDropout = train_ ? pDropout_ : 0.0;
-  return (*w2_)(dropout(relu((*w1_)(in)), pDropout));
+  return (*w2_)(autograd::dropout(autograd::relu((*w1_)(in)), pDropout));
 }
 
-Variable TransformerDecoderLayer::withPosEmbed(
-    const Variable& input,
-    const Variable& pos) {
+Tensor TransformerDecoderLayer::withPosEmbed(
+    const Tensor& input,
+    const Tensor& pos) {
   if (pos.isEmpty()) {
     return input;
   }
   return input + pos;
 }
 
-Variable TransformerDecoderLayer::selfAttention(
-    const Variable& input,
-    const Variable& pos,
-    const Variable& keyPaddingMask /* = Variable() */) {
+Tensor TransformerDecoderLayer::selfAttention(
+    const Tensor& input,
+    const Tensor& pos,
+    const Tensor& keyPaddingMask /* = Tensor() */) {
   auto k = withPosEmbed(input, pos);
   auto q = withPosEmbed(input, pos);
   return self_attn_->forward(q, k, input, keyPaddingMask)[0];
 }
 
-std::vector<Variable> TransformerDecoderLayer::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> TransformerDecoderLayer::forward(
+    const std::vector<Tensor>& input) {
   auto tgt = input[0];
   auto memory = input[1];
-  auto pos = (input.size() > 2) ? input[2] : Variable();
-  auto queryPos = (input.size() > 3) ? input[3] : Variable();
-  auto memoryKeyPaddingMask = (input.size() > 4) ? input[4] : Variable();
+  auto pos = (input.size() > 2) ? input[2] : Tensor();
+  auto queryPos = (input.size() > 3) ? input[3] : Tensor();
+  auto memoryKeyPaddingMask = (input.size() > 4) ? input[4] : Tensor();
 
   float pDropout = train_ ? pDropout_ : 0.0f;
 
   auto tgt2 = this->selfAttention(tgt, queryPos);
-  tgt = tgt + dropout(tgt2, pDropout);
+  tgt = tgt + autograd::dropout(tgt2, pDropout);
   tgt = (*norm1_)(tgt);
   tgt2 = encoder_attn_->forward({
       this->withPosEmbed(tgt, queryPos), // queries
@@ -405,10 +405,10 @@ std::vector<Variable> TransformerDecoderLayer::forward(
       memory, // values
       memoryKeyPaddingMask // mask
   })[0];
-  tgt = tgt + dropout(tgt2, pDropout);
+  tgt = tgt + autograd::dropout(tgt2, pDropout);
   tgt = (*norm2_)(tgt);
   tgt2 = mlp(tgt);
-  tgt = tgt + dropout(tgt2, pDropout);
+  tgt = tgt + autograd::dropout(tgt2, pDropout);
   tgt = (*norm3_)(tgt);
   return {tgt};
 }
@@ -433,24 +433,24 @@ TransformerDecoder::TransformerDecoder(
   add(LayerNorm(std::vector<int>{0}, 1e-5, true, modelDim));
 }
 
-std::vector<Variable> TransformerDecoder::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> TransformerDecoder::forward(
+    const std::vector<Tensor>& input) {
   auto tgt = input[0];
   auto memory = input[1];
-  auto pos = (input.size() > 2) ? input[2] : Variable();
-  auto query_pos = (input.size() > 3) ? input[3] : Variable();
-  auto mask = (input.size() > 4) ? input[4] : Variable();
+  auto pos = (input.size() > 2) ? input[2] : Tensor();
+  auto query_pos = (input.size() > 3) ? input[3] : Tensor();
+  auto mask = (input.size() > 4) ? input[4] : Tensor();
 
-  fl::Variable output = tgt;
+  fl::Tensor output = tgt;
   auto mods = modules();
 
-  std::vector<Variable> intermediate;
+  std::vector<Tensor> intermediate;
   for (int i = 0; i < mods.size() - 1; i++) {
     output = mods[i]->forward({output, memory, pos, query_pos, mask})[0];
     intermediate.push_back(
-        moddims(mods.back()->forward({output})[0], {0, 0, 0, 1}));
+        autograd::reshape(mods.back()->forward({output})[0], {0, 0, 0, 1}));
   }
-  return {concatenate(intermediate, 3)};
+  return {autograd::concatenate(intermediate, 3)};
 }
 std::string TransformerDecoder::prettyString() const {
   std::ostringstream ss;
@@ -470,9 +470,9 @@ TransformerEncoder::TransformerEncoder(
   }
 }
 
-std::vector<Variable> TransformerEncoder::forward(
-    const std::vector<Variable>& input) {
-  std::vector<Variable> output = input;
+std::vector<Tensor> TransformerEncoder::forward(
+    const std::vector<Tensor>& input) {
+  std::vector<Tensor> output = input;
   auto mods = modules();
   for (int i = 0; i < mods.size(); i++) {
     output = mods[i]->forward(output);
@@ -536,11 +536,11 @@ std::unique_ptr<Module> Transformer::clone() const {
   return std::make_unique<Transformer>(*this);
 }
 
-std::vector<Variable> Transformer::forward(
-    Variable src,
-    Variable mask,
-    Variable queryEmbed,
-    Variable posEmbed) {
+std::vector<Tensor> Transformer::forward(
+    Tensor src,
+    Tensor mask,
+    Tensor queryEmbed,
+    Tensor posEmbed) {
   if (src.ndim() != 4) {
     throw std::invalid_argument(
         "vision::Transformer::forward - "
@@ -553,38 +553,38 @@ std::vector<Variable> Transformer::forward(
 
   src = flatten(src, 0, 1);
   // Flatten to C x B x WH x 1
-  src = reorder(src, {1, 2, 0, 3});
+  src = autograd::transpose(src, {1, 2, 0, 3});
   // Squeeze to C x B x WH
-  src = moddims(src, {0, 0, 0});
+  src = autograd::reshape(src, {0, 0, 0});
 
   posEmbed = flatten(posEmbed, 0, 1);
-  posEmbed = reorder(posEmbed, {1, 2, 0, 3});
-  posEmbed = moddims(posEmbed, {0, 0, 0});
+  posEmbed = autograd::transpose(posEmbed, {1, 2, 0, 3});
+  posEmbed = autograd::reshape(posEmbed, {0, 0, 0});
 
   mask = flatten(mask, 0, 2);
 
   // Tile object queries for each batch
   Shape unsqueeze = {queryEmbed.dim(0), 1, queryEmbed.dim(1)};
-  queryEmbed = moddims(queryEmbed, unsqueeze);
-  queryEmbed = tile(queryEmbed, {1, B, 1});
+  queryEmbed = autograd::reshape(queryEmbed, unsqueeze);
+  queryEmbed = autograd::tile(queryEmbed, {1, B, 1});
   assert(queryEmbed.dim(1) == src.dim(1));
   assert(queryEmbed.dim(0) == src.dim(0));
 
-  auto tgt = fl::Variable(fl::full(queryEmbed.shape(), 0, src.type()), false);
+  auto tgt = fl::Tensor(fl::full(queryEmbed.shape(), 0, src.type()), false);
 
   auto memory = encoder_->forward({src, mask, posEmbed});
   auto hs = decoder_->forward({tgt, memory[0], posEmbed, queryEmbed, mask})[0];
 
-  auto reordered = reorder(hs, {0, 2, 1, 3});
+  auto reordered = autograd::transpose(hs, {0, 2, 1, 3});
   return {reordered};
 }
 
-std::vector<Variable> Transformer::forward(const std::vector<Variable>& input) {
+std::vector<Tensor> Transformer::forward(const std::vector<Tensor>& input) {
   assert(input.size() > 3);
   auto src = input[0];
-  auto mask = (input.size() > 1) ? input[1] : Variable();
-  auto query_embed = (input.size() > 2) ? input[2] : Variable();
-  auto pos_embed = (input.size() > 3) ? input[3] : Variable();
+  auto mask = (input.size() > 1) ? input[1] : Tensor();
+  auto query_embed = (input.size() > 2) ? input[2] : Tensor();
+  auto pos_embed = (input.size() > 3) ? input[3] : Tensor();
   return forward(src, mask, query_embed, pos_embed);
 }
 

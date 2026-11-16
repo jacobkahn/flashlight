@@ -7,6 +7,7 @@
 
 #include "flashlight/fl/tensor/TensorExtension.h"
 
+#include <format>
 #include <stdexcept>
 
 namespace fl::detail {
@@ -32,24 +33,25 @@ bool TensorExtensionRegistrar::registerTensorExtension(
 bool TensorExtensionRegistrar::isTensorExtensionRegistered(
       TensorBackendType backend,
       TensorExtensionType extensionType) {
-  return extensions_.count(backend) &&
-    extensions_[backend].count(extensionType);
+  return extensions_.contains(backend) &&
+    extensions_[backend].contains(extensionType);
 }
 
 TensorExtensionCallback&
 TensorExtensionRegistrar::getTensorExtensionCreationFunc(
     TensorBackendType backend,
     TensorExtensionType extensionType) {
-  if (extensions_.find(backend) == extensions_.end()) {
+  if (!extensions_.contains(backend)) {
     throw std::invalid_argument(
         "TensorExtensionRegistrar::getTensorExtensionCreationFunc: "
         "no tensor extensions registered for given backend.");
   }
   auto& _extensions = extensions_[backend];
-  if (_extensions.find(extensionType) == _extensions.end()) {
-    throw std::invalid_argument(
+  if (!_extensions.contains(extensionType)) {
+    throw std::invalid_argument(std::format(
         "TensorExtensionRegistrar::getTensorExtensionCreationFunc: "
-        "no tensor extensions registered for backend " + tensorBackendTypeToString(backend));
+        "no tensor extensions registered for backend {}",
+        tensorBackendTypeToString(backend)));
   }
   return _extensions[extensionType];
 }

@@ -11,7 +11,7 @@
 #include <algorithm>
 
 #include "flashlight/fl/dataset/datasets.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/pkg/vision/dataset/Jpeg.h"
 #include "flashlight/pkg/vision/dataset/LoaderDataset.h"
 #include "flashlight/pkg/vision/dataset/Transforms.h"

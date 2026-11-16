@@ -32,7 +32,7 @@ std::pair<Tensor, Tensor> hungarian(Tensor& cost) {
   std::vector<float> costHost(cost.elements());
   std::vector<int> rowIdxs(M);
   std::vector<int> colIdxs(M);
-  cost.host(costHost.data());
+  cost.hostSync(costHost.data());
   fl::lib::set::hungarian(
       costHost.data(), rowIdxs.data(), colIdxs.data(), M, N);
   auto rowIdxsArray = Tensor::fromVector(rowIdxs);

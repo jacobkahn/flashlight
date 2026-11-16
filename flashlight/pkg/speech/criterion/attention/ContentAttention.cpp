@@ -19,12 +19,12 @@ std::unique_ptr<Module> ContentAttention::clone() const {
       "Cloning is unimplemented in Module 'ContentAttention'");
 }
 
-std::pair<Variable, Variable> ContentAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& /* unused */,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> ContentAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& /* unused */,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   int dim = xEncoded.dim(0);
   if (dim != (1 + ((keyValue_) ? 1 : 0)) * state.dim(0)) {
     throw std::invalid_argument(
@@ -33,7 +33,7 @@ std::pair<Variable, Variable> ContentAttention::forwardBase(
   auto keys = keyValue_ ? xEncoded(fl::range(0, dim / 2)) : xEncoded;
   auto values = keyValue_ ? xEncoded(fl::range(dim / 2, dim)) : xEncoded;
   // [targetlen, seqlen, batchsize]
-  auto innerProd = matmulTN(state, keys) / std::sqrt(state.dim(0));
+  auto innerProd = autograd::matmul(state, keys, MatrixProperty::Transpose) / std::sqrt(state.dim(0));
   if (!logAttnWeight.isEmpty()) {
     if (logAttnWeight.shape() != innerProd.shape()) {
       throw std::invalid_argument(
@@ -46,9 +46,9 @@ std::pair<Variable, Variable> ContentAttention::forwardBase(
     innerProd = maskAttention(innerProd, xEncodedSizes);
   }
   // [targetlen, seqlen, batchsize]
-  auto attention = softmax(innerProd, 1);
+  auto attention = autograd::softmax(innerProd, 1);
   // [hiddendim, targetlen, batchsize]
-  auto summaries = matmulNT(values, attention);
+  auto summaries = autograd::matmul(values, attention, MatrixProperty::None, MatrixProperty::Transpose);
   return std::make_pair(attention, summaries);
 }
 
@@ -72,23 +72,23 @@ std::unique_ptr<Module> NeuralContentAttention::clone() const {
       "Cloning is unimplemented in Module 'NeuralContentAttention'");
 }
 
-std::pair<Variable, Variable> NeuralContentAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& /* unused */,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> NeuralContentAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& /* unused */,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   int U = state.dim(1);
   int H = xEncoded.dim(0);
   int T = xEncoded.dim(1);
   int B = xEncoded.dim(2);
 
-  auto tileHx = tile(moddims(xEncoded, {H, 1, T, B}), {1, U, 1, 1});
-  auto tileHy = tile(moddims(state, {H, U, 1, B}), {1, 1, T, 1});
+  auto tileHx = autograd::tile(autograd::reshape(xEncoded, {H, 1, T, B}), {1, U, 1, 1});
+  auto tileHy = autograd::tile(autograd::reshape(state, {H, U, 1, B}), {1, 1, T, 1});
   // [hiddendim, targetlen, seqlen, batchsize]
   auto hidden = tileHx + tileHy;
   // [targetlen, seqlen, batchsize]
-  auto nnOut = moddims(module(0)->forward({hidden}).front(), {U, T, B});
+  auto nnOut = autograd::reshape(module(0)->forward({hidden}).front(), {U, T, B});
   if (!logAttnWeight.isEmpty()) {
     if (logAttnWeight.shape() != nnOut.shape()) {
       throw std::invalid_argument(
@@ -101,9 +101,9 @@ std::pair<Variable, Variable> NeuralContentAttention::forwardBase(
     nnOut = maskAttention(nnOut, xEncodedSizes);
   }
   // [targetlen, seqlen, batchsize]
-  auto attention = softmax(nnOut, 1);
+  auto attention = autograd::softmax(nnOut, 1);
   // [hiddendim, targetlen, batchsize]
-  auto summaries = matmulNT(xEncoded, attention);
+  auto summaries = autograd::matmul(xEncoded, attention, MatrixProperty::None, MatrixProperty::Transpose);
   return std::make_pair(attention, summaries);
 }
 

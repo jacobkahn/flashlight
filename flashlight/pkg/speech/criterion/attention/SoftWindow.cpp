@@ -16,7 +16,7 @@ SoftWindow::SoftWindow() = default;
 SoftWindow::SoftWindow(double std, double avgRate, int offset)
     : std_(std), avgRate_(avgRate), offset_(offset) {}
 
-Variable SoftWindow::compute(
+Tensor SoftWindow::compute(
     int targetLen,
     int inputSteps,
     int batchSize,
@@ -39,11 +39,11 @@ Variable SoftWindow::compute(
     maskArray(decoderSteps >= targetNotPaddedSize) = kAttentionMaskValue;
   }
   // [decoderStepsDim, inputSteps, batchSize]
-  return Variable(maskArray, false);
+  return Tensor(maskArray, false);
 }
 
-Variable SoftWindow::computeWindow(
-    const Variable& /* unused */,
+Tensor SoftWindow::computeWindow(
+    const Tensor& /* unused */,
     int step,
     int targetLen,
     int inputSteps,
@@ -55,7 +55,7 @@ Variable SoftWindow::computeWindow(
       targetLen, inputSteps, batchSize, inputSizes, targetSizes, decoderSteps);
 }
 
-Variable SoftWindow::computeVectorizedWindow(
+Tensor SoftWindow::computeVectorizedWindow(
     int targetLen,
     int inputSteps,
     int batchSize,

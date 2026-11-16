@@ -42,21 +42,21 @@ class FL_API Linear : public UnaryModule {
    * Constructs a Linear module from the weight parameter \f$w\f$. The layer
    * will not include the bias term \f$b\f$ in this case.
    *
-   * @param w the 2D `Variable` tensor for the weight \f$w\f$.
+   * @param w the 2D `Tensor` tensor for the weight \f$w\f$.
    *  The shape should be [`output_size`, `input_size`].
    */
-  explicit Linear(const Variable& w);
+  explicit Linear(const Tensor& w);
 
   /**
    * Constructs a Linear module from the weight parameter \f$w\f$ and the bias
    * parameter \f$b\f$.
    *
-   * @param w the 2D `Variable` tensor for the weight \f$w\f$.
+   * @param w the 2D `Tensor` tensor for the weight \f$w\f$.
    *  The shape should be [`output_size`, `input_size`].
-   * @param b the 1D `Variable` tensor for the bias \f$b\f$.
+   * @param b the 1D `Tensor` tensor for the bias \f$b\f$.
    *  The shape should be [`output_size`].
    */
-  Linear(const Variable& w, const Variable& b);
+  Linear(const Tensor& w, const Tensor& b);
 
   /**
    * Constructs an Linear module from another, performing a deep copy of the
@@ -72,7 +72,7 @@ class FL_API Linear : public UnaryModule {
 
   Linear& operator=(Linear&& other) = default;
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

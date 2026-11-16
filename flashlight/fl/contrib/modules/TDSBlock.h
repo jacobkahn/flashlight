@@ -54,7 +54,7 @@ class FL_API TDSBlock : public Container {
       int rightPadding = -1,
       bool lNormIncludeTime = true);
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
   std::string prettyString() const override;
 
   FL_BASIC_CONTAINER_CLONING(TDSBlock)

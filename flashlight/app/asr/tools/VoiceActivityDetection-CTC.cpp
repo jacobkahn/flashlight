@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
 
     // Hypothesis
     auto tokenPrediction =
-        criterion->viterbiPath(rawEmission.tensor()).toHostVector<int>();
+        criterion->viterbiPath(rawEmission).toHostVectorSync<int>();
     auto letterPrediction = tknPrediction2Ltr(
         tokenPrediction,
         tokenDict,
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
     int N = rawEmission.dim(0);
     int T = rawEmission.dim(1);
     float vadFrameCnt = 0;
-    auto emissions = softmax(rawEmission, 0).tensor().toHostVector<float>();
+    auto emissions = softmax(rawEmission, 0).toHostVectorSync<float>();
     for (int i = 0; i < T; i++) {
       if (emissions[i * N + blank] < FLAGS_vad_threshold) {
         vadFrameCnt += 1;

@@ -301,17 +301,6 @@ DEFINE_double(
     pcttraineval,
     100,
     "[train] Percentage of training set (by number of utts) to use for evaluation");
-DEFINE_bool(
-    fl_benchmark_mode,
-    true,
-    "[train] Sets flashlight benchmark mode, which dynamically "
-    "benchmarks various operations based on their empirical performance on "
-    "current hardware throughout training");
-DEFINE_string(
-    fl_optim_mode,
-    "",
-    "[train] Sets the flashlight optimization mode. "
-    "Optim modes can be O1, O2, or O3.");
 DEFINE_string(
     fl_log_level,
     "",
@@ -331,9 +320,7 @@ DEFINE_bool(
     fl_amp_use_mixed_precision,
     false,
     "[train] Use mixed precision for training - scale loss and gradients up and down "
-    "by a scale factor that changes over time. If no fl optim mode is "
-    "specified with --fl_optim_mode when passing this flag, automatically "
-    "sets the optim mode to O1.");
+    "by a scale factor that changes over time.");
 DEFINE_double(
     fl_amp_scale_factor,
     4096.,

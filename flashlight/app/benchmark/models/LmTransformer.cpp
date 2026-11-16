@@ -54,8 +54,8 @@ std::unique_ptr<Module> LmTransformer::clone() const {
   return std::make_unique<LmTransformer>(*this);
 }
 
-std::vector<fl::Variable> LmTransformer::forward(
-    const std::vector<fl::Variable>& input) {
+std::vector<fl::Tensor> LmTransformer::forward(
+    const std::vector<fl::Tensor>& input) {
   auto out = input[0];
   // Avoid fp16 usage in any embedding-ralated calls.
   out = frontend_->forward(out);
@@ -65,7 +65,7 @@ std::vector<fl::Variable> LmTransformer::forward(
     out = out.astype(fl::dtype::f16);
   }
   for (int trIdx = 0; trIdx < transformers_.size(); trIdx++) {
-    out = transformers_[trIdx]->forward({out, fl::Variable()}).front();
+    out = transformers_[trIdx]->forward({out, fl::Tensor()}).front();
   }
 
   // Make sure passing fp32 tensor to criterion.

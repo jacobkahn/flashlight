@@ -71,7 +71,7 @@ TEST(SequentialBuilderTest, Serialization) {
   auto outputl = loaded->forward(input);
 
   ASSERT_TRUE(allParamsClose(*loaded.get(), *model));
-  ASSERT_TRUE(allClose(outputl.tensor(), output.tensor()));
+  ASSERT_TRUE(allClose(outputl, output));
 }
 
 int main(int argc, char** argv) {

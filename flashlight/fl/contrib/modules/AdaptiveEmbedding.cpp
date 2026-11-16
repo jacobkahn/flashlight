@@ -8,6 +8,7 @@
 #include "flashlight/fl/contrib/modules/AdaptiveEmbedding.h"
 
 #include <cmath>
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -49,34 +50,40 @@ AdaptiveEmbedding::AdaptiveEmbedding(
   }
 }
 
-Variable AdaptiveEmbedding::forward(const Variable& input) {
+Tensor AdaptiveEmbedding::forward(const Tensor& input) {
   if (input.ndim() != 2) {
     throw std::invalid_argument(
         "AdaptiveEmbedding::forward - input must "
-        "have 2 dimensions - expect T x B");
+        "have 2 dimensions - expect B x T");
   }
 
-  auto flatInput = flat(input);
-  std::vector<Variable> indices;
-  std::vector<Variable> embeddings;
+  auto flatInput = autograd::flatten(input);
+  std::vector<Tensor> indices;
+  std::vector<Tensor> embeddings;
 
-  Tensor headMask = flatInput.tensor() < cutoff_[0];
-  if (fl::sum(headMask).scalar<unsigned>() > 0) {
-    auto headEmbedding =
-        embedding(flatInput(headMask), reorder(params_[0], {1, 0}));
-    headEmbedding = matmul(params_[1], headEmbedding);
+  // Row-major: embedding table is {numEmbeddings, embeddingDim}
+  // params_[0] is already {cutoff_[0], embeddingDim_} - correct for embedding()
+  Tensor headMask = flatInput < cutoff_[0];
+  if (fl::sum(headMask).asScalar<unsigned>() > 0) {
+    // embedding returns {numSelected, embeddingDim_}
+    auto headEmbedding = autograd::embedding(flatInput(headMask), params_[0]);
+    // Project: {numSelected, embDim} @ {embDim, embDim}^T = {numSelected, embDim}
+    headEmbedding = autograd::matmul(headEmbedding, params_[1], MatrixProperty::None, MatrixProperty::Transpose);
     indices.emplace_back(fl::nonzero(headMask), false);
     embeddings.push_back(headEmbedding);
   }
 
   for (int tailIdx = 1; tailIdx < cutoff_.size(); tailIdx++) {
-    Tensor tailMask = flatInput.tensor() < cutoff_[tailIdx] &&
-        flatInput.tensor() >= cutoff_[tailIdx - 1];
+    Tensor tailMask = flatInput < cutoff_[tailIdx] &&
+        flatInput >= cutoff_[tailIdx - 1];
     if (fl::any(tailMask).asScalar<bool>()) {
-      auto tailEmbedding = embedding(
+      // embedding returns {numSelected, tailEmbeddingDim}
+      auto tailEmbedding = autograd::embedding(
           flatInput(tailMask) - cutoff_[tailIdx - 1],
-          reorder(params_[tailIdx * 2], {1, 0}));
-      tailEmbedding = matmul(params_[tailIdx * 2 + 1], tailEmbedding);
+          params_[tailIdx * 2]);
+      // Project: {numSelected, tailEmbDim} @ {embDim, tailEmbDim}^T
+      //        = {numSelected, embDim}
+      tailEmbedding = autograd::matmul(tailEmbedding, params_[tailIdx * 2 + 1], MatrixProperty::None, MatrixProperty::Transpose);
       indices.emplace_back(fl::nonzero(tailMask), false);
       embeddings.push_back(tailEmbedding);
     }
@@ -86,11 +93,14 @@ Variable AdaptiveEmbedding::forward(const Variable& input) {
         "Invalid input, no positions in the AdaptiveEmbedding layer");
   }
 
-  Shape outShape({embeddingDim_, input.dim(0), input.dim(1)});
-  auto result = fl::concatenate(embeddings, 1);
-  auto resultIndices = fl::concatenate(indices, 0);
-  Tensor tmpIndices = fl::argsort(resultIndices.tensor(), 0);
-  return moddims(result(fl::span, tmpIndices), outShape);
+  // Row-major: output is {B, T, embeddingDim_}
+  Shape outShape({input.dim(0), input.dim(1), embeddingDim_});
+  // Each embedding is {numSelected_i, embeddingDim_}. Concatenate along dim 0.
+  auto result = autograd::concatenate(embeddings, 0);
+  auto resultIndices = autograd::concatenate(indices, 0);
+  Tensor tmpIndices = fl::argsort(resultIndices, 0);
+  // Reorder rows by original position, then reshape to {B, T, C}
+  return autograd::reshape(result(tmpIndices), outShape);
 }
 
 std::unique_ptr<Module> AdaptiveEmbedding::clone() const {
@@ -98,14 +108,14 @@ std::unique_ptr<Module> AdaptiveEmbedding::clone() const {
 }
 
 std::string AdaptiveEmbedding::prettyString() const {
-  std::ostringstream ss;
-  ss << "AdaptiveEmbedding (dim: " << embeddingDim_ << "), (cutoff: ";
-  for (int i = 0; i < cutoff_.size() - 1; i++) {
-    ss << cutoff_[i] << ", ";
+  std::string cutoffs;
+  for (size_t i = 0; i < cutoff_.size(); ++i) {
+    if (i > 0) cutoffs += ", ";
+    cutoffs += std::to_string(cutoff_[i]);
   }
-  ss << cutoff_[cutoff_.size() - 1] << "), "
-     << "(divValue: " << divValue_ << ")";
-  return ss.str();
+  return std::format(
+      "AdaptiveEmbedding (dim: {}), (cutoff: {}), (divValue: {})",
+      embeddingDim_, cutoffs, divValue_);
 }
 
 } // namespace fl

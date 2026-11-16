@@ -43,7 +43,7 @@ class FL_API SpecAugment : public UnaryModule {
       int nTMask,
       MaskingStrategy mStrategy = MaskingStrategy::ZERO);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   FL_SAVE_LOAD_WITH_BASE(
       UnaryModule,

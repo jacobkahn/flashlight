@@ -7,6 +7,7 @@
 
 #include "flashlight/fl/nn/modules/Pool2D.h"
 
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -33,15 +34,15 @@ Pool2D::Pool2D(
       yPad_(py.padVal),
       mode_(mode) {}
 
-Variable Pool2D::forward(const Variable& input) {
+Tensor Pool2D::forward(const Tensor& input) {
   auto px = derivePadding(
-      input.dim(0),
+      input.dim(3),
       xFilter_,
       xStride_,
       xPad_,
       /* dilation= */ 1);
   auto py = derivePadding(
-      input.dim(1),
+      input.dim(2),
       yFilter_,
       yStride_,
       yPad_,
@@ -51,7 +52,7 @@ Variable Pool2D::forward(const Variable& input) {
     throw std::invalid_argument("invalid padding for Pool2D");
   }
 
-  return pool2d(input, xFilter_, yFilter_, xStride_, yStride_, px, py, mode_);
+  return autograd::pool2d(input, xFilter_, yFilter_, xStride_, yStride_, px, py, mode_);
 }
 
 std::unique_ptr<Module> Pool2D::clone() const {
@@ -59,34 +60,22 @@ std::unique_ptr<Module> Pool2D::clone() const {
 }
 
 std::string Pool2D::prettyString() const {
-  std::ostringstream ss;
-  ss << "Pool2D";
-  switch (mode_) {
-    case PoolingMode::MAX:
-      ss << "-max";
-      break;
-    case PoolingMode::AVG_EXCLUDE_PADDING:
-      ss << "-avg(without pad)";
-      break;
-    case PoolingMode::AVG_INCLUDE_PADDING:
-      ss << "-avg(with pad)";
-      break;
-  }
-  ss << " (" << xFilter_ << "x" << yFilter_ << ", " << xStride_ << ","
-     << yStride_ << ", ";
-  if (xPad_ == static_cast<int>(PaddingMode::SAME)) {
-    ss << "SAME";
-  } else {
-    ss << xPad_;
-  }
-  ss << ",";
-  if (yPad_ == static_cast<int>(PaddingMode::SAME)) {
-    ss << "SAME";
-  } else {
-    ss << yPad_;
-  }
-  ss << ")";
-  return ss.str();
+  const char* modeStr = [&] {
+    switch (mode_) {
+      case PoolingMode::MAX: return "-max";
+      case PoolingMode::AVG_EXCLUDE_PADDING: return "-avg(without pad)";
+      case PoolingMode::AVG_INCLUDE_PADDING: return "-avg(with pad)";
+      default: return "";
+    }
+  }();
+  auto padStr = [](int pad) -> std::string {
+    return pad == static_cast<int>(PaddingMode::SAME)
+        ? "SAME" : std::to_string(pad);
+  };
+  return std::format(
+      "Pool2D{} ({}x{}, {},{}, {},{})",
+      modeStr, xFilter_, yFilter_, xStride_, yStride_,
+      padStr(xPad_), padStr(yPad_));
 }
 
 } // namespace fl

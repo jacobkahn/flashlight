@@ -16,7 +16,7 @@ using std::vector;
 namespace fl {
 
 SGDOptimizer::SGDOptimizer(
-    const vector<Variable>& parameters,
+    const vector<Tensor>& parameters,
     float learningRate,
     float momentum /* = 0 */,
     float weightDecay /* = 0 */,
@@ -41,8 +41,8 @@ void SGDOptimizer::step() {
       continue;
     }
 
-    Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
 
     if (wd_ != 0) {
       // Weight decay term

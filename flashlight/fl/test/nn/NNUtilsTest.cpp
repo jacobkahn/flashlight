@@ -11,6 +11,7 @@
 #include "flashlight/fl/nn/nn.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
 
 using namespace fl;
@@ -113,6 +114,6 @@ TEST(UtilsTest, Join) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

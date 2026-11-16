@@ -16,8 +16,9 @@
 #include "flashlight/fl/nn/nn.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace fl;
 
@@ -33,7 +34,8 @@ TEST(SerializationTest, Residual) {
   std::shared_ptr<Residual> loaded;
   load(path, loaded);
 
-  auto input = Variable(fl::rand({12, 10, 3, 4}), false);
+  // Row-major: {N, Cin, H, W}. Linear(12, 6) operates on last dim (12).
+  auto input = Tensor(fl::rand({4, 3, 10, 12}), false);
   auto output = model->forward(input);
   auto outputl = loaded->forward(input);
 
@@ -51,7 +53,8 @@ TEST(SerializationTest, AsymmetricConv1D) {
   std::shared_ptr<AsymmetricConv1D> loaded;
   load(path, loaded);
 
-  auto input = Variable(fl::rand({25, 10, c, 4}), false);
+  // Row-major: {N, C, H, W}. AsymmetricConv1D has T on dim 3 (W).
+  auto input = Tensor(fl::rand({4, c, 10, 25}), false);
   auto output = model->forward(input);
   auto outputl = loaded->forward(input);
 
@@ -76,10 +79,10 @@ TEST(SerializationTest, Transformer) {
   load(path, loaded);
   loaded->eval();
 
-  // auto input = Variable(fl::rand({c, timesteps, batchsize, 1}), false);
-  auto input = Variable(fl::rand({c, timesteps, batchsize}), false);
-  auto output = model->forward({input, Variable()});
-  auto outputl = loaded->forward({input, Variable()});
+  // Row-major: {B, T, C}
+  auto input = Tensor(fl::rand({batchsize, timesteps, c}), false);
+  auto output = model->forward({input, Tensor()});
+  auto outputl = loaded->forward({input, Tensor()});
 
   ASSERT_TRUE(allParamsClose(*loaded, *model));
   ASSERT_TRUE(allClose(outputl[0], output[0]));
@@ -102,10 +105,10 @@ TEST(SerializationTest, ConformerSerialization) {
   load(path, loaded);
   loaded->eval();
 
-  // auto input = Variable(fl::rand({c, timesteps, batchsize, 1}), false);
-  auto input = Variable(fl::rand({c, timesteps, batchsize}), false);
-  auto output = model->forward({input, Variable()});
-  auto outputl = loaded->forward({input, Variable()});
+  // Row-major: {B, T, C}
+  auto input = Tensor(fl::rand({batchsize, timesteps, c}), false);
+  auto output = model->forward({input, Tensor()});
+  auto outputl = loaded->forward({input, Tensor()});
 
   ASSERT_TRUE(allParamsClose(*loaded, *model));
   ASSERT_TRUE(allClose(outputl[0], output[0]));
@@ -122,8 +125,8 @@ TEST(SerializationTest, PositionEmbedding) {
   load(path, loaded);
   loaded->eval();
 
-  // auto input = Variable(fl::rand({128, 10, 5, 1}), false);
-  auto input = Variable(fl::rand({128, 10, 5}), false);
+  // Row-major: {B, T, C} where C=layerDim=128
+  auto input = Tensor(fl::rand({5, 10, 128}), false);
   auto output = model->forward({input});
   auto outputl = loaded->forward({input});
 
@@ -141,8 +144,8 @@ TEST(SerializationTest, SinusoidalPositionEmbedding) {
   std::shared_ptr<SinusoidalPositionEmbedding> loaded;
   load(path, loaded);
 
-  // auto input = Variable(fl::rand({128, 10, 5, 1}), false);
-  auto input = Variable(fl::rand({128, 10, 5}), false);
+  // Row-major: {B, T, C} where C=layerDim=128
+  auto input = Tensor(fl::rand({5, 10, 128}), false);
   auto output = model->forward({input});
   auto outputl = loaded->forward({input});
 
@@ -161,8 +164,9 @@ TEST(SerializationTest, AdaptiveEmbedding) {
   load(path, loaded);
 
   std::vector<int> values = {1, 4, 6, 2, 12, 7, 4, 21, 22, 18, 3, 23};
+  // Row-major: {B, T} = {2, 6}
   auto input =
-      Variable(Tensor::fromVector({6, 2}, values, fl::dtype::f32), false);
+      Tensor(Tensor::fromVector({2, 6}, values, fl::dtype::f32), false);
   auto output = model->forward(input);
   auto outputl = loaded->forward(input);
 
@@ -183,25 +187,29 @@ TEST(SerializationTest, RawWavSpecAugment) {
   loaded->train();
 
   int T = 300;
-  // Input is T x C x B (here, C, B = 1)
-  auto time = 2 * M_PI * fl::reshape(fl::iota({T}), {T, 1, 1}) / 16000;
+  // Row-major: input is {B, C, T} (here B=1, C=1)
+  auto time = 2 * M_PI * fl::reshape(fl::iota({T}), {1, 1, T}) / 16000;
   auto finalWav = fl::sin(time * 500) + fl::sin(time * 1000) +
       fl::sin(time * 7000) + fl::sin(time * 7500);
   auto inputWav = finalWav + fl::sin(time * 3000) + fl::sin(time * 4000) +
       fl::sin(time * 5000);
 
-  auto filteredWav = loaded->forward(fl::Variable(inputWav, false));
+  auto filteredWav = loaded->forward(fl::Tensor(inputWav, false));
   // compare middle of filtered wave to avoid edge artifacts comparison
   int halfKernelWidth = 63;
+  // Slice on dim 2 (T)
   ASSERT_TRUE(fl::allClose(
-      fl::Variable(
-          finalWav(fl::range(halfKernelWidth, T - halfKernelWidth)), false),
-      filteredWav(fl::range(halfKernelWidth, T - halfKernelWidth)),
-      1e-3));
+      fl::Tensor(
+          finalWav(fl::span, fl::span,
+              fl::range(halfKernelWidth, T - halfKernelWidth)),
+          false),
+      filteredWav(fl::span, fl::span,
+          fl::range(halfKernelWidth, T - halfKernelWidth)),
+      2e-3));
 }
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

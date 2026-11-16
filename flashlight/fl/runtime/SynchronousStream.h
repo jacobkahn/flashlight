@@ -26,11 +26,13 @@ class FL_API SynchronousStream : public StreamTrait<SynchronousStream> {
   // prevent name hiding
   using StreamTrait<SynchronousStream>::relativeSync;
 
-  static constexpr StreamType type = StreamType::Synchronous;
+  static constexpr StreamType streamType = StreamType::Synchronous;
 
   X64Device& device() override;
   const X64Device& device() const override;
   void relativeSync(const SynchronousStream& waitOn) const override;
+  void relativeSync(const Stream& waitOn) const override;
+  Event createEvent() const override;
 };
 
 } // namespace fl

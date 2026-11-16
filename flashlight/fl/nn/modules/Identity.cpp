@@ -9,7 +9,7 @@
 
 namespace fl {
 
-std::vector<Variable> Identity::forward(const std::vector<Variable>& inputs) {
+std::vector<Tensor> Identity::forward(const std::vector<Tensor>& inputs) {
   return inputs;
 };
 

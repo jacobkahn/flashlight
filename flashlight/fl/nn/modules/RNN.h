@@ -37,7 +37,7 @@ namespace fl {
  * will be twice the `hidden_size` if the RNN is bidirectional.
  *
  * In addition the RNN supports including the hidden state and the cell state
- * as input and output. When these are input as the empty Variable they are
+ * as input and output. When these are input as the empty Tensor they are
  * assumed to be zero.
  */
 class FL_API RNN : public Module {
@@ -104,43 +104,43 @@ class FL_API RNN : public Module {
 
   RNN& operator=(RNN&& other) = default;
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
   using Module::operator();
 
   /** Forward the RNN Layer.
    * @param input Should be of shape [\f$X_{in}\f$, \f$N\f$, \f$T\f$]
-   * @returns a single output Variable with shape [\f$X_{out}\f$, \f$N\f$,
+   * @returns a single output Tensor with shape [\f$X_{out}\f$, \f$N\f$,
    * \f$T\f$]
    */
-  Variable forward(const Variable& input);
+  Tensor forward(const Tensor& input);
 
-  Variable operator()(const Variable& input);
+  Tensor operator()(const Tensor& input);
 
   /** Forward the RNN Layer.
    * @param input Should be of shape [\f$X_{in}\f$, \f$N\f$, \f$T\f$]
    * @param hidden_state Should be of shape [\f$X_{out}\f$, \f$N\f$]. If an
-   * empty Variable is passed in then the hidden state is assumed zero.
+   * empty Tensor is passed in then the hidden state is assumed zero.
    * @returns An tuple of output Variables.
    *  - The first element is the output of the RNN of shape [\f$X_{out}\f$,
    *  \f$N\f$, \f$T\f$]
    *  - The second element is the hidden state of the RNN of shape
    *  [\f$X_{out}\f$, \f$N\f$]
    */
-  std::tuple<Variable, Variable> forward(
-      const Variable& input,
-      const Variable& hidden_state);
+  std::tuple<Tensor, Tensor> forward(
+      const Tensor& input,
+      const Tensor& hidden_state);
 
-  std::tuple<Variable, Variable> operator()(
-      const Variable& input,
-      const Variable& hidden_state);
+  std::tuple<Tensor, Tensor> operator()(
+      const Tensor& input,
+      const Tensor& hidden_state);
 
   /** Forward the RNN Layer.
    * @param input Should be of shape [\f$X_{in}\f$, \f$N\f$, \f$T\f$]
    * @param hidden_state Should be of shape [\f$X_{out}\f$, \f$N\f$]. If an
-   * empty Variable is passed in then the hidden state is assumed zero.
+   * empty Tensor is passed in then the hidden state is assumed zero.
    * @param cell_state Should be of shape [\f$X_{out}\f$, \f$N\f$]. If an empty
-   * Variable is passed in then the hidden state is assumed zero.
+   * Tensor is passed in then the hidden state is assumed zero.
    * @returns An tuple of output Variables.
    *  - The first element is the output of the RNN of shape [\f$X_{out}\f$,
    *  \f$N\f$, \f$T\f$]
@@ -149,15 +149,15 @@ class FL_API RNN : public Module {
    *  - The third element is the cell state of the RNN of shape [\f$X_{out}\f$,
    *  \f$N\f$]
    */
-  std::tuple<Variable, Variable, Variable> forward(
-      const Variable& input,
-      const Variable& hidden_state,
-      const Variable& cell_state);
+  std::tuple<Tensor, Tensor, Tensor> forward(
+      const Tensor& input,
+      const Tensor& hidden_state,
+      const Tensor& cell_state);
 
-  std::tuple<Variable, Variable, Variable> operator()(
-      const Variable& input,
-      const Variable& hidden_state,
-      const Variable& cell_state);
+  std::tuple<Tensor, Tensor, Tensor> operator()(
+      const Tensor& input,
+      const Tensor& hidden_state,
+      const Tensor& cell_state);
 
   std::unique_ptr<Module> clone() const override;
 

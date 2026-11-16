@@ -9,13 +9,13 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 
 namespace fl {
 
 FL_API double clipGradNorm(
-    const std::vector<Variable>& parameters,
+    const std::vector<Tensor>& parameters,
     double max_norm);
 
 }

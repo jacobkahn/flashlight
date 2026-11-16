@@ -11,19 +11,19 @@
 #include <cinttypes>
 #include <cstdio>
 #include <ctime>
-#include <sstream>
+#include <format>
 #include <stdexcept>
 #include <unordered_map>
 
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/DefaultTensorType.h"
 #include "flashlight/fl/tensor/TensorBackend.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
-bool f16Supported() {
-  return defaultTensorBackend().isDataTypeSupported(fl::dtype::f16);
+bool dtypeSupported(fl::dtype type) {
+  return defaultTensorBackend().isDataTypeSupported(type);
 }
 
 size_t divRoundUp(size_t numerator, size_t denominator) {
@@ -42,7 +42,7 @@ std::string prettyStringMemorySizeUnits(size_t size) {
   if (size == SIZE_MAX) {
     return "SIZE_MAX";
   }
-  std::stringstream ss;
+  std::string result;
 
   bool isFirst = true;
   while (size) {
@@ -63,23 +63,23 @@ std::string prettyStringMemorySizeUnits(size_t size) {
     }
     if (size > 0) {
       if (!isFirst) {
-        ss << '+';
+        result += '+';
       }
       isFirst = false;
       size_t nUnits = size >> shift;
-      ss << nUnits << unit;
+      result += std::format("{}{}", nUnits, unit);
       size -= (nUnits << shift);
     }
   }
 
-  return ss.str();
+  return result;
 }
 
 std::string prettyStringCountUnits(size_t count) {
   if (count == SIZE_MAX) {
     return "SIZE_MAX";
   }
-  std::stringstream ss;
+  std::string result;
 
   bool isFirst = true;
   while (count) {
@@ -100,16 +100,16 @@ std::string prettyStringCountUnits(size_t count) {
     }
     if (count > 0) {
       if (!isFirst) {
-        ss << '+';
+        result += '+';
       }
       isFirst = false;
       size_t nUnits = count / magnitude;
-      ss << nUnits << unit;
+      result += std::format("{}{}", nUnits, unit);
       count -= (nUnits * magnitude);
     }
   }
 
-  return ss.str();
+  return result;
 }
 } // namespace
 
@@ -117,26 +117,20 @@ std::string prettyStringMemorySize(size_t size) {
   if (size == SIZE_MAX) {
     return "SIZE_MAX";
   }
-  std::stringstream ss;
-  ss << size;
   if (size >= (1UL << 13)) {
-    ss << '(' << prettyStringMemorySizeUnits(size) << ')';
+    return std::format("{}({})", size, prettyStringMemorySizeUnits(size));
   }
-
-  return ss.str();
+  return std::to_string(size);
 }
 
 std::string prettyStringCount(size_t count) {
   if (count == SIZE_MAX) {
     return "SIZE_MAX";
   }
-  std::stringstream ss;
-  ss << count;
-
-  if (count >= 1e3) { // >= 10 thousand
-    ss << '(' << prettyStringCountUnits(count) << ')';
+  if (count >= 1e3) {
+    return std::format("{}({})", count, prettyStringCountUnits(count));
   }
-  return ss.str();
+  return std::to_string(count);
 }
 
 std::string getEnvVar(

@@ -13,26 +13,26 @@
 
 namespace fl::pkg::speech {
 
-Variable maskAttention(const Variable& input, const Variable& sizes) {
+Tensor maskAttention(const Tensor& input, const Tensor& sizes) {
   int B = input.dim(2);
   int T = input.dim(1);
   // xEncodedSizes is (1, B) size
   Tensor inputNotPaddedSize =
-      fl::ceil(sizes.tensor() / fl::amax(sizes.tensor()).asScalar<float>() * T);
+      fl::ceil(sizes / fl::amax(sizes).asScalar<float>() * T);
   Tensor padMask =
       fl::iota({T, 1}, {1, B}) >= fl::tile(inputNotPaddedSize, {T, 1});
   padMask = fl::tile(fl::reshape(padMask, {1, T, B}), {input.dim(0), 1, 1});
 
-  Tensor output = input.tensor();
+  Tensor output = input;
   output(padMask) = kAttentionMaskValue;
 
   auto gradFunc =
-      [padMask](std::vector<Variable>& inputs, const Variable& gradOutput) {
-        Tensor gradArray = gradOutput.tensor();
+      [padMask](std::vector<Tensor>& inputs, const Tensor& gradOutput) {
+        Tensor gradArray = gradOutput;
         gradArray(padMask) = 0.;
-        inputs[0].addGrad(Variable(gradArray, false));
+        inputs[0].addGrad(Tensor(gradArray, false));
       };
-  return Variable(output, {input.withoutData()}, gradFunc);
+  return Tensor(output, {input.withoutData()}, gradFunc);
 }
 
 } // namespace fl

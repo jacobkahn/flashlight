@@ -28,8 +28,8 @@ class LinearSegmentationCriterion : public AutoSegmentationCriterion {
         "Cloning is unimplemented in Module 'LinearSegmentationCriterion'");
   }
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override {
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override {
     if (inputs.size() != 2) {
       throw std::invalid_argument("Invalid inputs size");
     }

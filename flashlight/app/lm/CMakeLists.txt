@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # ----------------------------- Binaries -----------------------------
 add_executable(fl_lm_train
   ${CMAKE_CURRENT_LIST_DIR}/Train.cpp

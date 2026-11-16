@@ -38,10 +38,10 @@ class FL_API AdaptiveSoftMax : public UnaryModule {
    * @param inputs values for each class to compute probabilities over
    * @param head_output the output of the first frequency bucket (the 'top'
    * bucket)
-   * @returns `Variable` containing the log probabilities over the full
+   * @returns `Tensor` containing the log probabilities over the full
    * distribution
    */
-  Variable getFullLogProb(const Variable& inputs, const Variable& headOutput)
+  Tensor getFullLogProb(const Tensor& inputs, const Tensor& headOutput)
       const;
 
  public:
@@ -75,24 +75,24 @@ class FL_API AdaptiveSoftMax : public UnaryModule {
   /**
    * Computes log-probabilities across all classes for some input.
    *
-   * @param inputs a Variable with size [\f$C_{in}\f$, \f$B_1\f$, \f$B_2\f$,
+   * @param inputs a Tensor with size [\f$C_{in}\f$, \f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$]
-   * @return a Variable containing log probabilities for each class with size
+   * @return a Tensor containing log probabilities for each class with size
    * [\f$C\f$, \f$B_1\f$, \f$B_2\f$, \f$B_3\f$], where \f$C\f$ is the number of
    * classes.
    */
-  Variable forward(const Variable& inputs) override;
+  Tensor forward(const Tensor& inputs) override;
 
   /**
    * Computes the class with highest probability for each example in a given
    * input.
    *
-   * @param inputs a Variable with size [\f$C_{in}\f$, \f$B_1\f$, \f$B_2\f$,
+   * @param inputs a Tensor with size [\f$C_{in}\f$, \f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$].
-   * @return a Variable with shape [\f$1\f$, \f$B_1\f$, \f$B_2\f$, \f$B_3\f$],
+   * @return a Tensor with shape [\f$1\f$, \f$B_1\f$, \f$B_2\f$, \f$B_3\f$],
    * containing the classes with the highest probabilities, over each sample.
    */
-  Variable predict(const Variable& inputs) const;
+  Tensor predict(const Tensor& inputs) const;
   std::vector<int> getCutoff() const;
 
   std::unique_ptr<Module> clone() const override;

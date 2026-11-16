@@ -10,15 +10,9 @@ function(add_coverage_to_target)
       -g
       $<$<COMPILE_LANGUAGE:CXX>:--coverage>
       )
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.13)
-      target_link_options(${add_coverage_to_target_TARGET}
-        PUBLIC
-        $<$<COMPILE_LANGUAGE:CXX>:--coverage>)
-    else()
-      target_link_libraries(${add_coverage_to_target_TARGET}
-        PUBLIC
-        --coverage)
-    endif()
+    target_link_options(${add_coverage_to_target_TARGET}
+      PUBLIC
+      $<$<COMPILE_LANGUAGE:CXX>:--coverage>)
   endif()
 endfunction()
 

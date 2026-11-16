@@ -93,7 +93,6 @@ DECLARE_bool(fl_amp_use_mixed_precision);
 DECLARE_double(fl_amp_scale_factor);
 DECLARE_uint64(fl_amp_scale_factor_update_interval);
 DECLARE_double(fl_amp_max_scale_factor);
-DECLARE_string(fl_optim_mode);
 
 class Trainer {
  public:
@@ -127,7 +126,7 @@ class Trainer {
 
   std::shared_ptr<fl::Reducer> reducer_;
   std::shared_ptr<fl::FirstOrderOptimizer> optimizer_;
-  std::vector<fl::Variable> parameters_;
+  std::vector<fl::Tensor> parameters_;
 
   fl::AverageValueMeter trainLossMeter_;
   fl::AverageValueMeter validLossMeter_;
@@ -157,7 +156,7 @@ class Trainer {
   void createOptimizer();
 
   /* Stateful training helpers */
-  std::pair<fl::Variable, fl::Variable> getInputAndTarget(
+  std::pair<fl::Tensor, fl::Tensor> getInputAndTarget(
       const std::vector<Tensor>& sample) const;
   void setLr();
   void reduceGrads();

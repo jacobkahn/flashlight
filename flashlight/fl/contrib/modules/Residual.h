@@ -57,7 +57,7 @@ class FL_API Residual : public Container {
 
   void checkShortcut(int fromLayer, int toLayer);
   void processShortcut(int fromLayer, int toLayer, int projectionIndex);
-  Variable applyScale(const Variable& input, const int layerIndex);
+  Tensor applyScale(const Tensor& input, const int layerIndex);
 
   // Maps end -> start
   std::unordered_map<int, std::unordered_map<int, int>> shortcut_;
@@ -130,9 +130,9 @@ class FL_API Residual : public Container {
     projectionsIndices_.insert(modules_.size() - 1);
   }
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
-  Variable forward(const Variable& input);
+  Tensor forward(const Tensor& input);
 
   std::string prettyString() const override;
 

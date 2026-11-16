@@ -25,8 +25,8 @@ class AsrTransformer : public fl::Container {
   AsrTransformer& operator=(const AsrTransformer& other);
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& input) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& input) override;
 
   std::string prettyString() const override;
 

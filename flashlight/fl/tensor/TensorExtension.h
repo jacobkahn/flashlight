@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <unordered_map>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -21,7 +21,6 @@ namespace fl {
  */
 enum class TensorExtensionType {
   Generic, // placeholder
-  Autograd,
   Vision,
   JitOptimizer,
 };

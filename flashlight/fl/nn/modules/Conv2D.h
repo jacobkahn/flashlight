@@ -13,10 +13,6 @@
 
 namespace fl {
 
-namespace detail {
-struct ConvBenchmarks;
-}
-
 /**
  * Applies a 2D convolution over an 4D input along its first two dimensions.
  * This layer expects an input of shape [\f$X_{in}\f$, \f$Y_{in}\f$,
@@ -108,10 +104,10 @@ class FL_API Conv2D : public UnaryModule {
       int groups = 1);
 
   /**
-   * Constructs a Conv2D module with a kernel `Variable` tensor. No bias term
+   * Constructs a Conv2D module with a kernel `Tensor` tensor. No bias term
    * will be applied to the output.
    *
-   * @param w the kernel `Variable` tensor. The shape should be
+   * @param w the kernel `Tensor` tensor. The shape should be
    *  [\f$kerneldim_0\f$, \f$kerneldim_1\f$, \f$C_{in}\f$, \f$C_{out}\f$].
    * @param sx the stride of the convolution along the first dimension
    * @param sy the stride of the convolution along the second dimension
@@ -131,7 +127,7 @@ class FL_API Conv2D : public UnaryModule {
    *  be only connected to the input channels in the i-th group.
    */
   explicit Conv2D(
-      const Variable& w,
+      const Tensor& w,
       int sx = 1,
       int sy = 1,
       detail::IntOrPadMode px = 0,
@@ -141,12 +137,12 @@ class FL_API Conv2D : public UnaryModule {
       int groups = 1);
 
   /**
-   * Constructs a Conv2D module with a kernel `Variable` tensor and a bias
-   * `Variable` tensor.
+   * Constructs a Conv2D module with a kernel `Tensor` tensor and a bias
+   * `Tensor` tensor.
    *
-   * @param w the kernel `Variable` tensor. The shape should be
+   * @param w the kernel `Tensor` tensor. The shape should be
    *  [\f$kerneldim_0\f$, \f$kerneldim_1\f$, \f$C_{in}\f$, \f$C_{out}\f$].
-   * @param b the bias `Variable` tensor. The shape should be
+   * @param b the bias `Tensor` tensor. The shape should be
    *  [\f$1\f$, \f$1\f$, \f$C_{out}\f$, \f$1\f$].
    * @param sx the stride of the convolution along the first dimension
    * @param sy the stride of the convolution along the second dimension
@@ -166,8 +162,8 @@ class FL_API Conv2D : public UnaryModule {
    *  be only connected to the input channels in the i-th group.
    */
   Conv2D(
-      const Variable& w,
-      const Variable& b,
+      const Tensor& w,
+      const Tensor& b,
       int sx = 1,
       int sy = 1,
       detail::IntOrPadMode px = 0,
@@ -196,14 +192,12 @@ class FL_API Conv2D : public UnaryModule {
 
   Conv2D& operator=(Conv2D&& other) = default;
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 
   std::string prettyString() const override;
 
- protected:
-  std::shared_ptr<detail::ConvBenchmarks> benchmarks_;
 };
 
 } // namespace fl

@@ -35,7 +35,7 @@ class FL_API Dropout : public UnaryModule {
    */
   Dropout(double drop_ratio = 0.5);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

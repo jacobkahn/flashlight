@@ -16,7 +16,7 @@
 #include <utility>
 
 #include "flashlight/fl/common/Filesystem.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 #pragma once
 
@@ -209,8 +209,11 @@ void save(
         "Serialzation of sparse Tensor is not supported yet!");
   }
   std::vector<uint8_t> vec(tensor.bytes());
-  tensor.host(vec.data());
+  tensor.hostSync(vec.data());
   ar(tensor.shape(), tensor.type(), vec);
+  // Version 1: also save requiresGrad flag
+  bool rg = tensor.requiresGrad();
+  ar(rg);
 }
 
 template <class Archive>
@@ -220,6 +223,14 @@ void load(Archive& ar, fl::Tensor& tensor, const uint32_t /* version */) {
   std::vector<uint8_t> vec;
   ar(dims, ty, vec);
   tensor = fl::Tensor::fromVector(dims, vec, ty);
+  // Always load requiresGrad flag (save always writes it)
+  bool rg;
+  ar(rg);
+  if (rg) {
+    tensor.setRequiresGrad(true);
+  }
 }
 
 } // namespace cereal
+
+CEREAL_CLASS_VERSION(fl::Tensor, 1);

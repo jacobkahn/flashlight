@@ -9,7 +9,7 @@
 
 #include <stdexcept>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 FrameErrorMeter::FrameErrorMeter(bool accuracy /* = false */)
@@ -31,7 +31,7 @@ void FrameErrorMeter::add(const Tensor& output, const Tensor& target) {
         "output/target must be 1-dimensional for FrameErrorMeter");
   }
 
-  sum_ += fl::countNonzero(output != target).scalar<unsigned>();
+  sum_ += fl::countNonzero(output != target).asScalar<unsigned>();
   n_ += target.dim(0);
 }
 

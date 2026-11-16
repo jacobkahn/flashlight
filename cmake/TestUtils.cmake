@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.5.1)
-
 set(GTEST_IMPORTED_TARGETS "")
 
 # Get or find Google Test and Google Mock
@@ -31,16 +29,24 @@ endif()
 include(GoogleTest)
 find_package(Threads REQUIRED)
 
+# Optional OpenMP thread count for tests run through ctest. Empty (default)
+# leaves the environment alone; the library itself never sets a thread count.
+# Useful on large multi-socket/SMT machines, where OpenMP's default (all logical
+# CPUs) makes tiny CPU ops very slow.
+set(FL_TEST_NUM_THREADS "" CACHE STRING
+  "If set, run ctest tests with OMP_NUM_THREADS=<value>")
+
 function(build_test)
   set(options)
-  set(oneValueArgs SRC)
+  set(oneValueArgs SRC SUFFIX)
   set(multiValueArgs LIBS PREPROC)
   cmake_parse_arguments(build_test "${options}" "${oneValueArgs}"
     "${multiValueArgs}" ${ARGN})
 
   get_filename_component(src_name ${build_test_SRC} NAME_WE)
-  set(target "${src_name}")
+  set(target "${src_name}${build_test_SUFFIX}")
   add_executable(${target} ${build_test_SRC})
+  target_compile_features(${target} PUBLIC cxx_std_20)
   if (TARGET gtest)
     add_dependencies(${target} gtest) # make sure gtest is built first
   endif()
@@ -69,5 +75,14 @@ function(build_test)
       GMOCK_LINKED_AS_SHARED_LIBRARY=$<BOOL:${BUILD_SHARED_LIBS}>
     )
   endif()
-  gtest_add_tests(TARGET ${target})
+  if (build_test_SUFFIX)
+    gtest_add_tests(TARGET ${target} TEST_PREFIX "${build_test_SUFFIX}."
+      TEST_LIST registered_tests)
+  else()
+    gtest_add_tests(TARGET ${target} TEST_LIST registered_tests)
+  endif()
+  if (FL_TEST_NUM_THREADS AND registered_tests)
+    set_tests_properties(${registered_tests} PROPERTIES
+      ENVIRONMENT "OMP_NUM_THREADS=${FL_TEST_NUM_THREADS}")
+  endif()
 endfunction(build_test)

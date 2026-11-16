@@ -23,12 +23,12 @@ std::unique_ptr<Module> SimpleLocationAttention::clone() const {
       "Cloning is unimplemented in Module 'SimpleLocationAttention'");
 }
 
-std::pair<Variable, Variable> SimpleLocationAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& prevAttn,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> SimpleLocationAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& prevAttn,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   int U = state.dim(1);
   if (U > 1) {
     throw std::invalid_argument(
@@ -39,11 +39,11 @@ std::pair<Variable, Variable> SimpleLocationAttention::forwardBase(
   int B = xEncoded.dim(2);
 
   // [1, seqlen, batchsize]
-  auto innerProd = matmulTN(state, xEncoded);
+  auto innerProd = autograd::matmul(state, xEncoded, MatrixProperty::Transpose);
 
   if (!prevAttn.isEmpty()) {
-    auto addAttn = moddims(
-        module(0)->forward({moddims(prevAttn, {1, T, 1, B})}).front(),
+    auto addAttn = autograd::reshape(
+        module(0)->forward({autograd::reshape(prevAttn, {1, T, 1, B})}).front(),
         {1, T, B});
     innerProd = innerProd + addAttn;
   }
@@ -59,9 +59,9 @@ std::pair<Variable, Variable> SimpleLocationAttention::forwardBase(
     innerProd = maskAttention(innerProd, xEncodedSizes);
   }
   // [1, seqlen, batchsize]
-  auto attention = softmax(innerProd, 1);
+  auto attention = autograd::softmax(innerProd, 1);
   // [hiddendim, 1, batchsize]
-  auto summaries = matmulNT(xEncoded, attention);
+  auto summaries = autograd::matmul(xEncoded, attention, MatrixProperty::None, MatrixProperty::Transpose);
   return std::make_pair(attention, summaries);
 }
 
@@ -82,12 +82,12 @@ std::unique_ptr<Module> LocationAttention::clone() const {
       "Cloning is unimplemented in Module 'LocationAttention'");
 }
 
-std::pair<Variable, Variable> LocationAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& prevAttn,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> LocationAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& prevAttn,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   int U = state.dim(1);
   if (U > 1) {
     throw std::invalid_argument(
@@ -98,13 +98,13 @@ std::pair<Variable, Variable> LocationAttention::forwardBase(
   int T = xEncoded.dim(1);
   int B = xEncoded.dim(2);
 
-  auto innerProd = matmulTN(state, xEncoded);
+  auto innerProd = autograd::matmul(state, xEncoded, MatrixProperty::Transpose);
 
   if (!prevAttn.isEmpty()) {
-    auto addAttn = moddims(
-        module(0)->forward({moddims(prevAttn, {1, T, 1, B})}).front(),
+    auto addAttn = autograd::reshape(
+        module(0)->forward({autograd::reshape(prevAttn, {1, T, 1, B})}).front(),
         {H, T, B});
-    innerProd = innerProd + matmulTN(state, addAttn);
+    innerProd = innerProd + autograd::matmul(state, addAttn, MatrixProperty::Transpose);
   }
 
   if (!logAttnWeight.isEmpty()) {
@@ -118,9 +118,9 @@ std::pair<Variable, Variable> LocationAttention::forwardBase(
     innerProd = maskAttention(innerProd, xEncodedSizes);
   }
   // [1, seqlen, batchsize]
-  auto attention = softmax(innerProd, 1);
+  auto attention = autograd::softmax(innerProd, 1);
   // [hiddendim, 1, batchsize]
-  auto summaries = matmulNT(xEncoded, attention);
+  auto summaries = autograd::matmul(xEncoded, attention, MatrixProperty::None, MatrixProperty::Transpose);
   return std::make_pair(attention, summaries);
 }
 
@@ -149,12 +149,12 @@ std::unique_ptr<Module> NeuralLocationAttention::clone() const {
       "Cloning is unimplemented in Module 'NeuralLocationAttention'");
 }
 
-std::pair<Variable, Variable> NeuralLocationAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& prevAttn,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> NeuralLocationAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& prevAttn,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   int U = state.dim(1);
   if (U > 1) {
     throw std::invalid_argument(
@@ -165,13 +165,13 @@ std::pair<Variable, Variable> NeuralLocationAttention::forwardBase(
   int B = xEncoded.dim(2);
 
   auto Hx = module(0)->forward({xEncoded}).front();
-  auto tileHy = tile(module(1)->forward({state}).front(), {1, T, 1});
+  auto tileHy = autograd::tile(module(1)->forward({state}).front(), {1, T, 1});
 
   // [1, seqlen, batchsize]
   auto hidden = Hx + tileHy;
   if (!prevAttn.isEmpty()) {
-    auto addAttn = moddims(
-        module(2)->forward({moddims(prevAttn, {1, T, 1, B})}).front(),
+    auto addAttn = autograd::reshape(
+        module(2)->forward({autograd::reshape(prevAttn, {1, T, 1, B})}).front(),
         {-1, T, B});
     hidden = hidden + addAttn;
   }
@@ -190,9 +190,9 @@ std::pair<Variable, Variable> NeuralLocationAttention::forwardBase(
     nnOut = maskAttention(nnOut, xEncodedSizes);
   }
   // [1, seqlen, batchsize]
-  auto attention = softmax(nnOut, 1);
+  auto attention = autograd::softmax(nnOut, 1);
   // [hiddendim, 1, batchsize]
-  auto summaries = matmulNT(xEncoded, attention);
+  auto summaries = autograd::matmul(xEncoded, attention, MatrixProperty::None, MatrixProperty::Transpose);
   return std::make_pair(attention, summaries);
 }
 

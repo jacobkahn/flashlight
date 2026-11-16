@@ -7,11 +7,12 @@
 
 #include "flashlight/fl/tensor/DefaultTensorType.h"
 
+#include "flashlight/fl/tensor/TensorAdapter.h"
+
 namespace fl {
 
 TensorBackend& defaultTensorBackend() {
-  // TODO: improve this implementation! Hacky/requires creating a tensor
-  return Tensor().backend();
+  return detail::DefaultTensorType::getInstance().getBackend();
 }
 
 } // namespace fl

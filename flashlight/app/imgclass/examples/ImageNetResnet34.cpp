@@ -58,9 +58,7 @@ DEFINE_bool(
     fl_amp_use_mixed_precision,
     false,
     "[train] Use mixed precision for training - scale loss and gradients up and down "
-    "by a scale factor that changes over time. If no fl optim mode is "
-    "specified with --fl_optim_mode when passing this flag, automatically "
-    "sets the optim mode to O1.");
+    "by a scale factor that changes over time.");
 DEFINE_double(
     fl_amp_scale_factor,
     65536.,
@@ -74,11 +72,6 @@ DEFINE_double(
     fl_amp_max_scale_factor,
     65536.,
     "[train] Maximum value for the loss scale factor in mixed precision training");
-DEFINE_string(
-    fl_optim_mode,
-    "",
-    "[train] Sets the flashlight optimization mode. "
-    "Optim modes can be O1, O2, or O3.");
 
 using namespace fl;
 using fl::pkg::vision::compose;
@@ -87,8 +80,8 @@ using namespace fl::pkg::vision;
 
 #define FL_LOG_MASTER(lvl) LOG_IF(lvl, (fl::getWorldRank() == 0))
 
-fl::Variable criterion(const fl::Variable& in, const fl::Variable& target) {
-  return categoricalCrossEntropy(logSoftmax(in, 0), target);
+fl::Tensor criterion(const fl::Tensor& in, const fl::Tensor& target) {
+  return autograd::categoricalCrossEntropy(autograd::logSoftmax(in, 0), target);
 }
 
 // Returns the average loss, top 5 error, and top 1 error
@@ -109,9 +102,9 @@ std::tuple<double, double, double> evalLoop(
 
     // Compute and record the loss.
     auto loss = criterion(output, target);
-    lossMeter.add(loss.tensor().scalar<float>());
-    top5Acc.add(output.tensor(), target.tensor());
-    top1Acc.add(output.tensor(), target.tensor());
+    lossMeter.add(loss.scalarSync<float>());
+    top5Acc.add(output, target);
+    top1Acc.add(output, target);
   }
   model->train();
   fl::pkg::runtime::syncMeter(lossMeter);
@@ -152,17 +145,10 @@ int main(int argc, char** argv) {
 
   fl::setDevice(worldRank);
   fl::setSeed(worldSize);
-  fl::DynamicBenchmark::setBenchmarkMode(true);
-
   std::shared_ptr<fl::pkg::runtime::DynamicScaler> dynamicScaler;
   if (FLAGS_fl_amp_use_mixed_precision) {
     FL_LOG_MASTER(INFO)
         << "Mixed precision training enabled. Will perform loss scaling.";
-    auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-        ? fl::OptimLevel::DEFAULT
-        : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-    fl::OptimMode::get().setOptimLevel(flOptimLevel);
-
     dynamicScaler = std::make_shared<fl::pkg::runtime::DynamicScaler>(
         FLAGS_fl_amp_scale_factor,
         FLAGS_fl_amp_max_scale_factor,
@@ -291,9 +277,7 @@ int main(int argc, char** argv) {
       // Make Variables from the input Tensors.
       sampleTimerMeter.resume();
       auto inputs = noGrad(example[kImagenetInputIdx]);
-      if (FLAGS_fl_amp_use_mixed_precision && FLAGS_fl_optim_mode.empty()) {
-        // In case AMP is activated with DEFAULT mode,
-        // we manually cast input to fp16.
+      if (FLAGS_fl_amp_use_mixed_precision) {
         inputs = inputs.astype(fl::dtype::f16);
       }
       auto target = noGrad(example[kImagenetTargetIdx]);
@@ -323,9 +307,9 @@ int main(int argc, char** argv) {
           continue;
         }
 
-        trainLossMeter.add(loss.tensor());
-        top5Acc.add(output.tensor(), target.tensor());
-        top1Acc.add(output.tensor(), target.tensor());
+        trainLossMeter.add(loss);
+        top5Acc.add(output, target);
+        top1Acc.add(output, target);
         break;
       }
 

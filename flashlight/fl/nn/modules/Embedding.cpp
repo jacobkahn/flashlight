@@ -8,6 +8,7 @@
 #include "flashlight/fl/nn/modules/Embedding.h"
 
 #include <cmath>
+#include <format>
 
 #include "flashlight/fl/autograd/Functions.h"
 #include "flashlight/fl/nn/Init.h"
@@ -19,8 +20,8 @@ Embedding::Embedding(int embeddingDim, int numEmbeddings)
   initialize();
 }
 
-Embedding::Embedding(const Variable& w)
-    : UnaryModule({w}), embeddingDim_(w.dim(0)), numEmbeddings_(w.dim(1)) {}
+Embedding::Embedding(const Tensor& w)
+    : UnaryModule({w}), embeddingDim_(w.dim(1)), numEmbeddings_(w.dim(0)) {}
 
 Embedding::Embedding(const Embedding& other)
     : UnaryModule(other.copyParams()),
@@ -40,12 +41,12 @@ Embedding& Embedding::operator=(const Embedding& other) {
 void Embedding::initialize() {
   double stdv = std::sqrt(1.0 / static_cast<double>(embeddingDim_));
   auto embeddings =
-      uniform(embeddingDim_, numEmbeddings_, -stdv, stdv, fl::dtype::f32, true);
+      uniform(numEmbeddings_, embeddingDim_, -stdv, stdv, fl::dtype::f32, true);
   params_ = {embeddings};
 }
 
-Variable Embedding::forward(const Variable& input) {
-  return embedding(input, params_[0]);
+Tensor Embedding::forward(const Tensor& input) {
+  return autograd::embedding(input, params_[0]);
 }
 
 std::unique_ptr<Module> Embedding::clone() const {
@@ -53,10 +54,8 @@ std::unique_ptr<Module> Embedding::clone() const {
 }
 
 std::string Embedding::prettyString() const {
-  std::ostringstream ss;
-  ss << "Embedding (embeddings: " << numEmbeddings_
-     << ") (dim: " << embeddingDim_ << ")";
-  return ss.str();
+  return std::format(
+      "Embedding (embeddings: {}) (dim: {})", numEmbeddings_, embeddingDim_);
 }
 
 } // namespace fl

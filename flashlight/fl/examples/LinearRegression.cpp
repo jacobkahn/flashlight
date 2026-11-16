@@ -12,7 +12,7 @@
 #include "flashlight/fl/nn/nn.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 int main() {
   fl::init();
@@ -27,18 +27,18 @@ int main() {
   // Training params
   const int nEpochs = 100;
   const float learningRate = 0.001;
-  auto weight = fl::Variable(fl::rand({1, nFeat}), true /* isCalcGrad */);
-  auto bias = fl::Variable(fl::full({1}, 0.0), true /* isCalcGrad */);
+  auto weight = fl::Tensor(fl::rand({1, nFeat}), true /* isCalcGrad */);
+  auto bias = fl::Tensor(fl::full({1}, 0.0), true /* isCalcGrad */);
 
   std::cout << "[Linear Regression] Started..." << std::endl;
 
   for (int e = 1; e <= nEpochs; ++e) {
     fl::Tensor error = fl::full({1}, 0);
     for (int i = 0; i < nSamples; ++i) {
-      auto input = fl::Variable(X(fl::span, i), false /* isCalcGrad */);
+      auto input = fl::Tensor(X(fl::span, i), false /* isCalcGrad */);
       auto yPred = fl::matmul(weight, input) + bias;
 
-      auto yTrue = fl::Variable(Y(i), false /* isCalcGrad */);
+      auto yTrue = fl::Tensor(Y(i), false /* isCalcGrad */);
 
       // Mean Squared Error
       auto loss = ((yPred - yTrue) * (yPred - yTrue)) / nSamples;
@@ -47,18 +47,18 @@ int main() {
       loss.backward();
 
       // Update the weight and bias
-      weight.tensor() = weight.tensor() - learningRate * weight.grad().tensor();
-      bias.tensor() = bias.tensor() - learningRate * bias.grad().tensor();
+      weight.detach() = weight.detach() - learningRate * weight.grad().detach();
+      bias.detach() = bias.detach() - learningRate * bias.grad().detach();
 
       // clear the gradients for next iteration
       weight.zeroGrad();
       bias.zeroGrad();
 
-      error += loss.tensor();
+      error += loss;
     }
 
     std::cout << "Epoch: " << e
-              << " Mean Squared Error: " << error.scalar<float>() << std::endl;
+              << " Mean Squared Error: " << error.scalarSync<float>() << std::endl;
   }
 
   std::cout << "[Linear Regression] Done!" << std::endl;

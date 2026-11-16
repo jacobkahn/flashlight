@@ -7,67 +7,104 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "flashlight/fl/autograd/Functions.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Compute.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 namespace detail {
 
-class AutogradTestF16 : public ::testing::Test {
-    void SetUp() override {
-        // Ensures all operations will be in f16
-        OptimMode::get().setOptimLevel(OptimLevel::O3);
-    }
+class AutogradTestF16 : public ::testing::Test {};
 
-    void TearDown() override {
-        OptimMode::get().setOptimLevel(OptimLevel::DEFAULT);
-    }
-};
+using JacobianFunc = std::function<Tensor(Tensor&)>;
 
-using JacobianFunc = std::function<Variable(Variable&)>;
+// Flat host copy of a tensor's values, widened to double.
+inline std::vector<double> toHostDoubles(const Tensor& tensor) {
+  if (tensor.type() == fl::dtype::f64) {
+    return tensor.toHostVectorSync<double>();
+  }
+  auto values = tensor.astype(fl::dtype::f32).toHostVectorSync<float>();
+  return std::vector<double>(values.begin(), values.end());
+}
+
+// A tensor of `shape` and `type` holding `values` (row-major). Built from the
+// host in one step, so each perturbation costs a single transfer rather than
+// several tiny device ops.
+inline Tensor fromHostDoubles(
+    const Shape& shape,
+    const std::vector<double>& values,
+    fl::dtype type) {
+  if (type == fl::dtype::f64) {
+    return Tensor::fromVector<double>(shape, values);
+  }
+  std::vector<float> narrowed(values.begin(), values.end());
+  auto tensor = Tensor::fromVector<float>(shape, narrowed);
+  return type == fl::dtype::f32 ? tensor : tensor.astype(type);
+}
+
+// Compares the Jacobian of `func` at `input` from central finite differences
+// against the one from backward(). Both Jacobians are assembled on the host
+// from fresh lazy graphs per column/row: the input is never mutated (in-place
+// writes would grow IndexedUpdate chains), and no device matrix is updated
+// one column at a time.
 inline bool jacobianTestImpl(
     const JacobianFunc& func,
-    Variable& input,
+    Tensor& input,
     float precision = 1E-5,
     float perturbation = 1E-4) {
-    auto fwdJacobian =
-        Tensor({func(input).elements(), input.elements()}, fl::dtype::f32);
+  const auto firstResult = func(input);
+  const auto outShape = firstResult.shape();
+  const auto outType = firstResult.type();
+  const auto nOut = static_cast<Dim>(firstResult.elements());
+  const auto nIn = static_cast<Dim>(input.elements());
 
-    for (int i = 0; i < input.elements(); ++i) {
-        Tensor orig = input.tensor().flatten()(i);
-        input.tensor().flat(i) = orig - perturbation;
-        auto outa = func(input).tensor();
-
-        input.tensor().flat(i) = orig + perturbation;
-        auto outb = func(input).tensor();
-        input.tensor().flat(i) = orig;
-
-        fwdJacobian(fl::span, i) =
-            fl::reshape((outb - outa), {static_cast<Dim>(outa.elements())}) * 0.5 /
-            perturbation;
+  // fwdJacobian[o * nIn + i] = d out[o] / d in[i], by central differences on
+  // non-grad perturbed copies of the input.
+  std::vector<double> fwdJacobian(nOut * nIn);
+  auto values = toHostDoubles(input);
+  for (Dim i = 0; i < nIn; ++i) {
+    const double orig = values[i];
+    values[i] = orig - perturbation;
+    Tensor minus(fromHostDoubles(input.shape(), values, input.type()), false);
+    values[i] = orig + perturbation;
+    Tensor plus(fromHostDoubles(input.shape(), values, input.type()), false);
+    values[i] = orig;
+    auto diff = toHostDoubles((func(plus) - func(minus)) * 0.5 / perturbation);
+    for (Dim o = 0; o < nOut; ++o) {
+      fwdJacobian[o * nIn + i] = diff[o];
     }
+  }
 
-    auto bwdJacobian =
-        Tensor({func(input).elements(), input.elements()}, fl::dtype::f32);
-    auto dout =
-        Variable(fl::full(func(input).shape(), 0, func(input).type()), false);
+  // bwdJacobian row o = gradient of out[o] with respect to the input.
+  std::vector<double> bwdJacobian(nOut * nIn);
+  std::vector<double> oneHot(nOut, 0.);
+  for (Dim o = 0; o < nOut; ++o) {
+    oneHot[o] = 1.;
+    auto cotangent = fromHostDoubles(outShape, oneHot, outType);
+    oneHot[o] = 0.;
+    input.zeroGrad();
+    auto out = func(input);
+    out.backward(cotangent);
+    auto grad = toHostDoubles(input.grad());
+    std::copy(grad.begin(), grad.end(), bwdJacobian.begin() + o * nIn);
+  }
 
-    for (int i = 0; i < dout.elements(); ++i) {
-        dout.tensor().flat(i) = 1; // element in 1D view
-        input.zeroGrad();
-        auto out = func(input);
-        out.backward(dout);
-
-        bwdJacobian(i) = fl::reshape(input.grad().tensor(), {input.elements()});
-        dout.tensor().flat(i) = 0;
+  for (size_t k = 0; k < fwdJacobian.size(); ++k) {
+    if (!(std::abs(fwdJacobian[k] - bwdJacobian[k]) < precision)) {
+      return false;
     }
-    return allClose(fwdJacobian, bwdJacobian, precision);
+  }
+  return true;
 }
 
-}
+} // namespace detail
 } // namespace fl

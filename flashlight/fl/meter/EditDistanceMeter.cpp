@@ -10,7 +10,7 @@
 #include <cstdlib> // TODO: whatever is actually needed for free?
 #include <stdexcept>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 EditDistanceMeter::EditDistanceMeter() {
@@ -36,8 +36,8 @@ void EditDistanceMeter::add(const Tensor& output, const Tensor& target) {
   int len1 = output.dim(0);
   int len2 = target.dim(0);
 
-  int* in1raw = output.host<int>();
-  int* in2raw = target.host<int>();
+  int* in1raw = output.hostSync<int>();
+  int* in2raw = target.hostSync<int>();
   auto err_state = levensteinDistance(in1raw, in2raw, len1, len2);
   free(in1raw);
   in1raw = nullptr;

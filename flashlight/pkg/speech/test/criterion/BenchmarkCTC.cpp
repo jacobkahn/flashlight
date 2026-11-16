@@ -26,7 +26,7 @@ int main() {
 
   int N = 30, T = 487, L = 34, B = 10;
 
-  auto input = Variable(fl::log(fl::rand({N, T, B})), true);
+  auto input = Tensor(fl::log(fl::rand({N, T, B})), true);
 
   auto t = fl::abs(fl::rand({L, B}, fl::dtype::s32)).astype(fl::dtype::s32) %
       (N - 2);
@@ -36,10 +36,10 @@ int main() {
     t(fl::range(L / 2 + r, fl::end), i) = -1;
   }
 
-  Variable target(t, false);
+  Tensor target(t, false);
   int ntimes = 50;
-  Variable b = ctc.forward({input, target}).front();
-  Variable gradoutput = Variable(fl::rand(b.shape()) * 2 - 2, false);
+  Tensor b = ctc.forward({input, target}).front();
+  Tensor gradoutput = Tensor(fl::rand(b.shape()) * 2 - 2, false);
   for (int i = 0; i < 5; ++i) {
     b = ctc.forward({input, target}).front();
     b.backward();

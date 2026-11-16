@@ -37,17 +37,17 @@ class Detr : public Container {
       const int32_t numQueries,
       const bool auxLoss);
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
-  Variable forwardBackbone(const Variable& input);
-  std::vector<Variable> forwardTransformer(const std::vector<Variable>& input);
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
+  Tensor forwardBackbone(const Tensor& input);
+  std::vector<Tensor> forwardTransformer(const std::vector<Tensor>& input);
 
   std::unique_ptr<Module> clone() const override;
 
   std::string prettyString() const override;
 
-  std::vector<fl::Variable> paramsWithoutBackbone();
+  std::vector<fl::Tensor> paramsWithoutBackbone();
 
-  std::vector<fl::Variable> backboneParams();
+  std::vector<fl::Tensor> backboneParams();
 
  private:
   Detr() = default;

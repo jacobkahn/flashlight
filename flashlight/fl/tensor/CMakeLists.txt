@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # Enable or disable compute backends. Example:
 #
 #   fl_set_backend_state(ENABLE CUDA DISABLE CPU)
@@ -26,39 +24,101 @@ function(fl_set_backend_state)
 endfunction()
 
 # ]--------------- Backend Options and Selection
-option(FL_USE_ARRAYFIRE "Build ArrayFire tensor backend" ON)
-option(FL_USE_JIT "Build JIT tensor backend" ON)
+# The native CPU and CUDA backends are the defaults; ArrayFire is opt-in.
+option(FL_USE_ARRAYFIRE "Build ArrayFire tensor backend" OFF)
 option(FL_USE_TENSOR_STUB "Build Stub tensor backend" ON)
-option(FL_USE_ONEDNN "Build OneDNN tensor backend" ON)
+option(FL_USE_CPU "Build CPU tensor backend" ON)
+cmake_dependent_option(FL_USE_NATIVE_CUDA "Build native CUDA tensor backend" ON
+  "FL_USE_CUDA" OFF)
 
 
 if (FL_USE_ARRAYFIRE)
   include(${CMAKE_CURRENT_LIST_DIR}/backend/af/CMakeLists.txt)
 endif()
-if (FL_USE_JIT)
-  include(${CMAKE_CURRENT_LIST_DIR}/backend/jit/CMakeLists.txt)
-endif()
 if (FL_USE_TENSOR_STUB)
   include(${CMAKE_CURRENT_LIST_DIR}/backend/stub/CMakeLists.txt)
 endif()
-if (FL_USE_ONEDNN)
-  include(${CMAKE_CURRENT_LIST_DIR}/backend/onednn/CMakeLists.txt)
+if (FL_USE_CPU)
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/cpu/CMakeLists.txt)
+  # FL_USE_ONEDNN is set by backend/cpu/CMakeLists.txt when DNNL is found
+  if (FL_USE_ONEDNN)
+    include(${CMAKE_CURRENT_LIST_DIR}/ops/onednn/CMakeLists.txt)
+  endif()
+endif()
+if (FL_USE_NATIVE_CUDA)
+  include(${CMAKE_CURRENT_LIST_DIR}/backend/cuda/CMakeLists.txt)
+  include(${CMAKE_CURRENT_LIST_DIR}/ops/cuda/CMakeLists.txt)
+endif()
+
+# JIT infrastructure -- always built (the execution model for all tensor ops)
+include(${CMAKE_CURRENT_LIST_DIR}/eval/CMakeLists.txt)
+include(${CMAKE_CURRENT_LIST_DIR}/ir/CMakeLists.txt)
+include(${CMAKE_CURRENT_LIST_DIR}/printer/CMakeLists.txt)
+include(${CMAKE_CURRENT_LIST_DIR}/opt/CMakeLists.txt)
+
+target_sources(
+  flashlight
+  PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/JitBackend.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/JitBackendAutogradOps.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/JitBackendUtils.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/JitTensorBase.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ShapeInference.cpp
+)
+
+# Auto-enable cuDNN when CUDA is enabled and cuDNN is found
+if (FL_USE_CUDA)
+  find_package(CUDNN)
+  if (CUDNN_FOUND)
+    set(FL_USE_CUDNN ON)
+    message(STATUS
+      "CUDNN found (library: ${CUDNN_LIBRARIES} include: ${CUDNN_INCLUDE_DIRS})")
+    setup_install_find_module(${PROJECT_SOURCE_DIR}/cmake/FindCUDNN.cmake)
+  endif()
+else()
+  set(FL_USE_CUDNN OFF)
+endif()
+
+if (FL_USE_CUDNN)
+  include(${CMAKE_CURRENT_LIST_DIR}/ops/cudnn/CMakeLists.txt)
+
+  # cudnn_frontend: header-only C++17 wrapper for the cuDNN Backend Graph API.
+  # Provides the forward-looking graph-based API that replaces deprecated
+  # legacy cuDNN calls (conv forward/backward, pooling, batchnorm, etc.).
+  include(FetchContent)
+  FetchContent_Declare(
+    cudnn_frontend
+    GIT_REPOSITORY https://github.com/NVIDIA/cudnn-frontend.git
+    GIT_TAG        v1.9.0
+    GIT_SHALLOW    TRUE
+  )
+  # cudnn_frontend is header-only; we only need the headers, not samples/tests.
+  set(CUDNN_FRONTEND_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+  set(CUDNN_FRONTEND_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(cudnn_frontend)
+  # cudnn_frontend is header-only. Use its include dirs directly rather than
+  # linking the target, which would require exporting it in install(EXPORT).
+  get_target_property(_cfe_includes cudnn_frontend INTERFACE_INCLUDE_DIRECTORIES)
+  target_include_directories(flashlight PUBLIC ${_cfe_includes})
 endif()
 
 target_compile_definitions(
   flashlight
   PUBLIC
   FL_USE_ARRAYFIRE=$<BOOL:${FL_USE_ARRAYFIRE}>
-  FL_USE_JIT=$<BOOL:${FL_USE_JIT}>
   FL_USE_TENSOR_STUB=$<BOOL:${FL_USE_TENSOR_STUB}>
+  FL_USE_CPU=$<BOOL:${FL_USE_CPU}>
   FL_USE_ONEDNN=$<BOOL:${FL_USE_ONEDNN}>
+  FL_USE_NATIVE_CUDA=$<BOOL:${FL_USE_NATIVE_CUDA}>
+  FL_USE_CUDNN=$<BOOL:${FL_USE_CUDNN}>
 )
 
 # Make sure at least one tensor backend is enabled
 if (NOT (
     ${FL_USE_ARRAYFIRE} OR
     ${FL_USE_TENSOR_STUB} OR
-    ${FL_USE_ONEDNN}
+    ${FL_USE_CPU} OR
+    ${FL_USE_NATIVE_CUDA}
     )
   )
   message(FATAL_ERROR "Cannot build Flashlight with no tensor backends "
@@ -66,20 +126,27 @@ if (NOT (
     "for at least one backend.")
 endif()
 
+# Native CPU ops (CBLAS-based matmul, etc.)
+include(${CMAKE_CURRENT_LIST_DIR}/ops/native/CMakeLists.txt)
+
 target_sources(
   flashlight
   PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/Compute.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Copy.cpp
   ${CMAKE_CURRENT_LIST_DIR}/DefaultTensorType.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/BackendDispatch.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/BackendRegistry.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Index.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Init.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Random.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Shape.cpp
   ${CMAKE_CURRENT_LIST_DIR}/TensorBackend.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/TensorBase.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Tensor.cpp
   ${CMAKE_CURRENT_LIST_DIR}/TensorAdapter.cpp
   ${CMAKE_CURRENT_LIST_DIR}/TensorExtension.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Types.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/AutogradOps.cpp
 )
 
 # Profiling -- TODO: move this to runtime things
@@ -97,14 +164,8 @@ if (FL_USE_CUDA)
   endif()
 
   # Link CUDA components
-  if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.17)
-    find_package(CUDAToolkit REQUIRED cublas)
-    target_link_libraries(flashlight PRIVATE CUDA::cublas)
-  else()
-    # Remove old branch when requiring CMake >= 3.17
-    target_link_libraries(flashlight PRIVATE ${CUDA_LIBRARIES})
-    target_include_directories(flashlight PRIVATE ${CUDA_INCLUDE_DIRS})
-  endif()
+  find_package(CUDAToolkit REQUIRED cublas)
+  target_link_libraries(flashlight PRIVATE CUDA::cublas)
 
   if (FL_BUILD_PROFILING)
     # Try to find NVTX

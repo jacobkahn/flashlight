@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # backward-cpp
 option(FL_USE_BACKWARD_CPP "Build with backward-cpp support" OFF)
 if (FL_USE_BACKWARD_CPP)

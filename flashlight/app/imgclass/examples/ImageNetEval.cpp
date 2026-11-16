@@ -113,8 +113,8 @@ int main(int argc, char** argv) {
     auto output = model->forward({inputs}).front();
     auto target = noGrad(example[kImagenetTargetIdx]);
 
-    top5Acc.add(output.tensor(), target.tensor());
-    top1Acc.add(output.tensor(), target.tensor());
+    top5Acc.add(output, target);
+    top1Acc.add(output, target);
   }
   fl::pkg::runtime::syncMeter(top5Acc);
   fl::pkg::runtime::syncMeter(top1Acc);

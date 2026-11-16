@@ -13,7 +13,7 @@
 namespace fl {
 
 /**
- * Modifies the dimensions of a `Variable` and rearranges its elements without
+ * Modifies the dimensions of a `Tensor` and rearranges its elements without
  * modifying the order of elements in the underlying `Tensor`. When
  * specifying the number of elements in the array:
  * - If `-1` is specified on a particular axis, that axis will be assigned a
@@ -40,7 +40,7 @@ class FL_API View : public UnaryModule {
    */
   explicit View(Shape dims);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

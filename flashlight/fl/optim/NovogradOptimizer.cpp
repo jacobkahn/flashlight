@@ -16,7 +16,7 @@ using std::vector;
 namespace fl {
 
 NovogradOptimizer::NovogradOptimizer(
-    const vector<Variable>& parameters,
+    const vector<Tensor>& parameters,
     float learningRate,
     float beta1 /* = 0.9 */,
     float beta2 /* = 0.999 */,
@@ -46,8 +46,8 @@ void NovogradOptimizer::step() {
       continue;
     }
 
-    const Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    const Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
     Tensor& accGrad = accGrad_[i];
 
     double gradNorm = fl::sum(grad * grad).asScalar<double>();

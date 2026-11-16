@@ -11,7 +11,7 @@
 #include <variant>
 
 #include "flashlight/fl/common/Defines.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 

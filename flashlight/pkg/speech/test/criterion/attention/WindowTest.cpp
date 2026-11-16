@@ -23,7 +23,7 @@ TEST(WindowTest, MedianWindow) {
   int wr = 3;
   auto inputAttnArray =
       fl::abs(fl::randn({1, wl + wr, batchsize}, fl::dtype::f32));
-  auto inputAttn = Variable(
+  auto inputAttn = Tensor(
       inputAttnArray /
           fl::tile(
               sum(inputAttnArray, {1}, /* keepDims = */ true),
@@ -39,7 +39,7 @@ TEST(WindowTest, MedianWindow) {
   trueSumMask0(fl::span, fl::range(0, wl + wr), fl::span) = 1.0;
 
   ASSERT_EQ(mask0.shape(), Shape({1, inputsteps, batchsize}));
-  ASSERT_TRUE(allClose(fl::exp(mask0.tensor()), trueSumMask0));
+  ASSERT_TRUE(allClose(fl::exp(mask0), trueSumMask0));
 
   // check next step
   auto mask1 =
@@ -51,7 +51,7 @@ TEST(WindowTest, MedianWindow) {
   auto maskLarge = largeWindow.computeWindow(
       inputAttn, 0, inputsteps, inputsteps, batchsize);
   trueSumMask0 = fl::full({1, inputsteps, batchsize}, 0, fl::dtype::f32);
-  ASSERT_TRUE(allClose(maskLarge.tensor(), trueSumMask0));
+  ASSERT_TRUE(allClose(maskLarge, trueSumMask0));
 }
 
 TEST(WindowTest, MedianWindowWithPad) {
@@ -61,7 +61,7 @@ TEST(WindowTest, MedianWindowWithPad) {
   int wr = 5;
   auto inputAttnArray =
       fl::abs(fl::randn({1, wl + wr, batchsize}, fl::dtype::f32));
-  auto inputAttn = Variable(
+  auto inputAttn = Tensor(
       inputAttnArray /
           fl::tile(
               sum(inputAttnArray, {1}, /* keepDims = */ true),
@@ -83,7 +83,7 @@ TEST(WindowTest, MedianWindowWithPad) {
   trueSumMask0(fl::span, fl::range(inputsteps / 2, inputsteps), 0) = 0.0;
 
   ASSERT_EQ(mask0.shape(), Shape({1, inputsteps, batchsize}));
-  ASSERT_TRUE(allClose(fl::exp(mask0.tensor()), trueSumMask0));
+  ASSERT_TRUE(allClose(fl::exp(mask0), trueSumMask0));
 
   // check next step
   auto mask2 =
@@ -91,12 +91,12 @@ TEST(WindowTest, MedianWindowWithPad) {
   ASSERT_EQ(mask2.shape(), Shape({1, inputsteps, batchsize}));
   ASSERT_TRUE(
       fl::countNonzero(
-          fl::exp(mask2.tensor())(
+          fl::exp(mask2)(
               0, fl::range(inputsteps - inputsteps / 2, inputsteps), 0) == 0)
-          .scalar<unsigned>() == inputsteps / 2);
+          .scalarSync<unsigned>() == inputsteps / 2);
   ASSERT_TRUE(
-      fl::countNonzero(fl::exp(mask2.tensor())(0, fl::span, 0) == 0)
-          .scalar<unsigned>() == inputsteps);
+      fl::countNonzero(fl::exp(mask2)(0, fl::span, 0) == 0)
+          .scalarSync<unsigned>() == inputsteps);
 }
 
 TEST(WindowTest, StepWindow) {
@@ -107,7 +107,7 @@ TEST(WindowTest, StepWindow) {
   int sMin = 3, sMax = 15;
   double vMin = 2.3, vMax = 7.5;
 
-  Variable inputAttn; // dummy
+  Tensor inputAttn; // dummy
   std::vector<int> windowBoundaries(2, 0);
 
   StepWindow window(sMin, sMax, vMin, vMax);
@@ -124,7 +124,7 @@ TEST(WindowTest, StepWindow) {
       1.0;
 
   ASSERT_EQ(mask0.shape(), Shape({1, inputsteps, batchsize}));
-  ASSERT_TRUE(allClose(fl::exp(mask0.tensor()), trueSumMask0));
+  ASSERT_TRUE(allClose(fl::exp(mask0), trueSumMask0));
 
   auto mask1 =
       window.computeWindow(inputAttn, 1, inputsteps, inputsteps, batchsize);
@@ -137,7 +137,7 @@ TEST(WindowTest, StepWindow) {
       1.0;
 
   ASSERT_EQ(mask1.shape(), Shape({1, inputsteps, batchsize}));
-  ASSERT_TRUE(allClose(fl::exp(mask1.tensor()), trueSumMask1));
+  ASSERT_TRUE(allClose(fl::exp(mask1), trueSumMask1));
 
   auto maskLarge =
       window.computeWindow(inputAttn, 1000, inputsteps, inputsteps, batchsize);
@@ -151,7 +151,7 @@ TEST(WindowTest, StepWindow) {
       1.0;
 
   ASSERT_EQ(maskLarge.shape(), Shape({1, inputsteps, batchsize}));
-  ASSERT_TRUE(allClose(fl::exp(maskLarge.tensor()), trueSumMaskLarge));
+  ASSERT_TRUE(allClose(fl::exp(maskLarge), trueSumMaskLarge));
 
   auto maskV = window.computeVectorizedWindow(targetlen, inputsteps, batchsize);
   ASSERT_EQ(maskV.shape(), Shape({targetlen, inputsteps, batchsize}));
@@ -163,8 +163,7 @@ TEST(WindowTest, StepWindow) {
 
   auto maskVPad = fl::exp(window
                               .computeVectorizedWindow(
-                                  targetlen, inputsteps, batchsize, inpSz, tgSz)
-                              .tensor());
+                                  targetlen, inputsteps, batchsize, inpSz, tgSz));
   ASSERT_EQ(maskVPad.shape(), Shape({targetlen, inputsteps, batchsize}));
   ASSERT_TRUE(
       fl::countNonzero(
@@ -172,13 +171,13 @@ TEST(WindowTest, StepWindow) {
               fl::span,
               fl::range(inputsteps - inputsteps / 2, inputsteps),
               0) == 0)
-          .scalar<unsigned>() == inputsteps / 2 * targetlen);
+          .scalarSync<unsigned>() == inputsteps / 2 * targetlen);
   ASSERT_TRUE(
       fl::countNonzero(
           maskVPad(
               fl::range(targetlen - targetlen / 2, targetlen), fl::span, 0) ==
           0)
-          .scalar<unsigned>() == targetlen / 2 * inputsteps);
+          .scalarSync<unsigned>() == targetlen / 2 * inputsteps);
 }
 
 TEST(WindowTest, SoftWindow) {
@@ -188,14 +187,14 @@ TEST(WindowTest, SoftWindow) {
   int offset = 10;
   double avgRate = 5.2, std = 5.0;
 
-  Variable inputAttn; // dummy
+  Tensor inputAttn; // dummy
   SoftWindow window(std, avgRate, offset);
 
   auto mask0 =
       window.computeWindow(inputAttn, 0, inputsteps, inputsteps, batchsize);
 
   Tensor maxv, maxidx;
-  max(maxv, maxidx, mask0.tensor(), 1, /* keepDims = */ true);
+  max(maxv, maxidx, mask0, 1, /* keepDims = */ true);
   std::vector<int> trueMaxidx(batchsize, offset);
 
   ASSERT_EQ(mask0.shape(), Shape({1, inputsteps, batchsize}));
@@ -213,8 +212,7 @@ TEST(WindowTest, SoftWindow) {
 
   auto maskVPad = fl::exp(window
                               .computeVectorizedWindow(
-                                  targetlen, inputsteps, batchsize, inpSz, tgSz)
-                              .tensor());
+                                  targetlen, inputsteps, batchsize, inpSz, tgSz));
   ASSERT_EQ(maskVPad.shape(), Shape({targetlen, inputsteps, batchsize}));
   ASSERT_TRUE(
       fl::countNonzero(
@@ -222,13 +220,13 @@ TEST(WindowTest, SoftWindow) {
               fl::span,
               fl::range(inputsteps - inputsteps / 2, inputsteps),
               0) == 0)
-          .scalar<unsigned>() == inputsteps / 2 * targetlen);
+          .scalarSync<unsigned>() == inputsteps / 2 * targetlen);
   ASSERT_TRUE(
       fl::countNonzero(
           maskVPad(
               fl::range(targetlen - targetlen / 2, targetlen), fl::span, 0) ==
           0)
-          .scalar<unsigned>() == targetlen / 2 * inputsteps);
+          .scalarSync<unsigned>() == targetlen / 2 * inputsteps);
 }
 
 TEST(WindowTest, SoftPretrainWindow) {
@@ -239,25 +237,25 @@ TEST(WindowTest, SoftPretrainWindow) {
 
   std::vector<unsigned int> peaks = {0, 4, 8, 12, 16, 20, 24, 28};
 
-  Variable inputAttn;
+  Tensor inputAttn;
   SoftPretrainWindow window(std);
 
   // single step
-  std::vector<Variable> masks;
+  std::vector<Tensor> masks;
   for (int step = 0; step < targetlen; ++step) {
     masks.emplace_back(window.computeWindow(
         inputAttn, step, targetlen, inputsteps, batchsize));
   }
   auto maskS = concatenate(masks, 0);
   Tensor maxv, maxidx;
-  max(maxv, maxidx, maskS.tensor()(fl::span, fl::span, 0), 1);
+  max(maxv, maxidx, maskS(fl::span, fl::span, 0), 1);
 
   ASSERT_EQ(maskS.shape(), Shape({targetlen, inputsteps, batchsize}));
   ASSERT_TRUE(allClose(maxidx, Tensor::fromVector({8}, peaks)));
 
   // vectorized
   auto maskV = window.computeVectorizedWindow(targetlen, inputsteps, batchsize);
-  max(maxv, maxidx, maskV.tensor()(fl::span, fl::span, 0), 1);
+  max(maxv, maxidx, maskV(fl::span, fl::span, 0), 1);
 
   ASSERT_EQ(maskV.shape(), Shape({targetlen, inputsteps, batchsize}));
   ASSERT_TRUE(allClose(maxidx, Tensor::fromVector({8}, peaks)));
@@ -270,8 +268,7 @@ TEST(WindowTest, SoftPretrainWindow) {
 
   auto maskVPad = fl::exp(window
                               .computeVectorizedWindow(
-                                  targetlen, inputsteps, batchsize, inpSz, tgSz)
-                              .tensor());
+                                  targetlen, inputsteps, batchsize, inpSz, tgSz));
   ASSERT_EQ(maskVPad.shape(), Shape({targetlen, inputsteps, batchsize}));
   ASSERT_TRUE(
       fl::countNonzero(
@@ -279,13 +276,13 @@ TEST(WindowTest, SoftPretrainWindow) {
               fl::span,
               fl::range(inputsteps - inputsteps / 2, inputsteps),
               0) == 0)
-          .scalar<unsigned>() == inputsteps / 2 * targetlen);
+          .scalarSync<unsigned>() == inputsteps / 2 * targetlen);
   ASSERT_TRUE(
       fl::countNonzero(
           maskVPad(
               fl::range(targetlen - targetlen / 2, targetlen), fl::span, 0) ==
           0)
-          .scalar<unsigned>() == targetlen / 2 * inputsteps);
+          .scalarSync<unsigned>() == targetlen / 2 * inputsteps);
 }
 
 int main(int argc, char** argv) {

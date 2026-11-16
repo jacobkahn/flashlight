@@ -47,8 +47,8 @@ class ResNetBlockFrozenBatchNorm : public fl::Container {
       const int outChannels,
       const int stride = 1);
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   std::string prettyString() const override;
 
@@ -65,8 +65,8 @@ class ResNetBottleneckBlockFrozenBatchNorm : public fl::Container {
       const int outChannels,
       const int stride = 1);
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   std::string prettyString() const override;
 

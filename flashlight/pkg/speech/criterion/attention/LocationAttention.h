@@ -19,12 +19,12 @@ class SimpleLocationAttention : public AttentionBase {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::pair<Variable, Variable> forwardBase(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight,
-      const Variable& xEncodedSizes) override;
+  std::pair<Tensor, Tensor> forwardBase(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight,
+      const Tensor& xEncodedSizes) override;
 
   std::string prettyString() const override;
 
@@ -40,12 +40,12 @@ class LocationAttention : public AttentionBase {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::pair<Variable, Variable> forwardBase(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight,
-      const Variable& xEncodedSizes) override;
+  std::pair<Tensor, Tensor> forwardBase(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight,
+      const Tensor& xEncodedSizes) override;
 
   std::string prettyString() const override;
 
@@ -65,12 +65,12 @@ class NeuralLocationAttention : public AttentionBase {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::pair<Variable, Variable> forwardBase(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight,
-      const Variable& xEncodedSizes) override;
+  std::pair<Tensor, Tensor> forwardBase(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight,
+      const Tensor& xEncodedSizes) override;
 
   std::string prettyString() const override;
 

@@ -16,7 +16,8 @@
 #include "flashlight/fl/tensor/Init.h"
 #include "flashlight/fl/tensor/Random.h"
 #include "flashlight/fl/tensor/TensorBackend.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
+#include "flashlight/fl/tensor/DefaultTensorType.h"
 #include "flashlight/fl/tensor/backend/af/ArrayFireTensor.h"
 #include "flashlight/fl/tensor/backend/af/Utils.h"
 
@@ -51,9 +52,9 @@ namespace fl {
 TEST(ArrayFireTensorBaseTest, ArrayFireShapeInterop) {
   ASSERT_EQ(detail::afToFlDims(af::dim4(), 0), Shape({})); // scalar
   ASSERT_EQ(detail::afToFlDims(af::dim4(0), 1), Shape({0}));
-  ASSERT_EQ(detail::afToFlDims(af::dim4(0, 5), 2), Shape({0, 5}));
-  ASSERT_EQ(detail::afToFlDims(af::dim4(1, 0, 2), 3), Shape({1, 0, 2}));
-  ASSERT_EQ(detail::afToFlDims(af::dim4(0, 1, 1, 1), 4), Shape({0, 1, 1, 1}));
+  ASSERT_EQ(detail::afToFlDims(af::dim4(0, 5), 2), Shape({5, 0}));
+  ASSERT_EQ(detail::afToFlDims(af::dim4(1, 0, 2), 3), Shape({2, 0, 1}));
+  ASSERT_EQ(detail::afToFlDims(af::dim4(0, 1, 1, 1), 4), Shape({1, 1, 1, 0}));
 
   using namespace fl::detail;
   auto dimsEq = [](const af::dim4& d, const Shape& s) {
@@ -61,11 +62,11 @@ TEST(ArrayFireTensorBaseTest, ArrayFireShapeInterop) {
   };
 
   ASSERT_TRUE(dimsEq(af::dim4(3), {3})); // not 3, 1, 1, 1
-  ASSERT_TRUE(dimsEq(af::dim4(3, 2), {3, 2})); // not 3, 2, 1, 1
+  ASSERT_TRUE(dimsEq(af::dim4(3, 2), {2, 3})); // reversed: AF {3,2} -> FL {2,3}
   ASSERT_TRUE(dimsEq(af::dim4(3, 1), {3}));
-  // if explicitly specified, uses implicit 1 dim
-  ASSERT_TRUE(dimsEq(af::dim4(3, 1), {3, 1}));
-  ASSERT_TRUE(dimsEq(af::dim4(1, 3, 2), {1, 3, 2}));
+  // if explicitly specified, uses reversed dim order
+  ASSERT_TRUE(dimsEq(af::dim4(3, 1), {1, 3}));
+  ASSERT_TRUE(dimsEq(af::dim4(1, 3, 2), {2, 3, 1}));
   ASSERT_TRUE(dimsEq(af::dim4(1), {1}));
   ASSERT_TRUE(dimsEq(af::dim4(1, 1, 1), {1}));
 }
@@ -211,12 +212,12 @@ TEST(ArrayFireTensorBaseTest, full) {
   auto a = fl::full({3, 4}, 3.);
   ASSERT_EQ(a.shape(), Shape({3, 4}));
   ASSERT_EQ(a.type(), fl::dtype::f32);
-  ASSERT_TRUE(allClose(toArray(a), af::constant(3., {3, 4})));
+  ASSERT_TRUE(allClose(toArray(a), af::constant(3., {4, 3})));
 
   auto b = fl::full({1, 1, 5, 4}, 4.5);
   ASSERT_EQ(b.shape(), Shape({1, 1, 5, 4}));
   ASSERT_EQ(b.type(), fl::dtype::f32);
-  ASSERT_TRUE(allClose(toArray(b), af::constant(4.5, {1, 1, 5, 4})));
+  ASSERT_TRUE(allClose(toArray(b), af::constant(4.5, {4, 5, 1, 1})));
 }
 
 TEST(ArrayFireTensorBaseTest, identity) {
@@ -252,32 +253,33 @@ TEST(ArrayFireTensorBaseTest, rand) {
 
 TEST(ArrayFireTensorBaseTest, amin) {
   auto a = fl::rand({3, 3});
-  ASSERT_EQ(fl::amin(a).scalar<float>(), af::min<float>(toArray(a)));
+  ASSERT_EQ(fl::amin(a).scalarSync<float>(), af::min<float>(toArray(a)));
   ASSERT_TRUE(allClose(
       toArray(fl::amin(a, {0})),
-      fl::detail::condenseIndices(af::min(toArray(a), 0))));
+      fl::detail::condenseIndices(af::min(toArray(a), 1))));
 }
 
 TEST(ArrayFireTensorBaseTest, amax) {
   auto a = fl::rand({3, 3});
-  ASSERT_EQ(fl::amax(a).scalar<float>(), af::max<float>(toArray(a)));
+  ASSERT_EQ(fl::amax(a).scalarSync<float>(), af::max<float>(toArray(a)));
   ASSERT_TRUE(allClose(
       toArray(fl::amax(a, {0})),
-      fl::detail::condenseIndices(af::max(toArray(a), 0))));
+      fl::detail::condenseIndices(af::max(toArray(a), 1))));
 }
 
 TEST(ArrayFireTensorBaseTest, sum) {
   auto a = fl::rand({3, 3});
-  ASSERT_NEAR(fl::sum(a).scalar<float>(), af::sum<float>(toArray(a)), 1e-5);
+  ASSERT_NEAR(fl::sum(a).scalarSync<float>(), af::sum<float>(toArray(a)), 1e-5);
   ASSERT_TRUE(allClose(
       toArray(fl::sum(a, {0})),
-      fl::detail::condenseIndices(af::sum(toArray(a), 0))));
+      fl::detail::condenseIndices(af::sum(toArray(a), 1))));
 
   auto b = fl::rand({5, 6, 7, 8});
-  ASSERT_NEAR(fl::sum(b).scalar<float>(), af::sum<float>(toArray(b)), 1e-3);
+  ASSERT_NEAR(fl::sum(b).scalarSync<float>(), af::sum<float>(toArray(b)), 1e-3);
+  // FL axes {1,2} -> AF axes {2,1} for 4D tensor
   ASSERT_TRUE(allClose(
       toArray(fl::sum(b, {1, 2})),
-      fl::detail::condenseIndices(af::sum(af::sum(toArray(b), 1), 2))));
+      fl::detail::condenseIndices(af::sum(af::sum(toArray(b), 2), 1))));
 }
 
 TEST(ArrayFireTensorBaseTest, exp) {
@@ -327,38 +329,38 @@ TEST(ArrayFireTensorBaseTest, erf) {
 
 TEST(ArrayFireTensorBaseTest, mean) {
   auto a = fl::rand({3, 50});
-  ASSERT_NEAR(fl::mean(a).scalar<float>(), af::mean<float>(toArray(a)), 1e-4);
+  ASSERT_NEAR(fl::mean(a).scalarSync<float>(), af::mean<float>(toArray(a)), 1e-4);
   ASSERT_TRUE(allClose(
       toArray(fl::mean(a, {0})),
-      detail::condenseIndices(af::mean(toArray(a), 0))));
+      detail::condenseIndices(af::mean(toArray(a), 1))));
 }
 
 TEST(ArrayFireTensorBaseTest, median) {
   auto a = fl::rand({3, 50});
   ASSERT_NEAR(
-      fl::median(a).scalar<float>(), af::median<float>(toArray(a)), 1e-3);
+      fl::median(a).scalarSync<float>(), af::median<float>(toArray(a)), 1e-3);
   ASSERT_TRUE(allClose(
       toArray(fl::median(a, {0})),
-      detail::condenseIndices(af::median(toArray(a), 0))));
+      detail::condenseIndices(af::median(toArray(a), 1))));
 }
 
 TEST(ArrayFireTensorBaseTest, var) {
   const bool bias = false;
   af_var_bias biasMode = bias ? AF_VARIANCE_SAMPLE : AF_VARIANCE_POPULATION;
   auto a = fl::rand({3, 3});
-  ASSERT_EQ(fl::var(a).scalar<float>(), af::var<float>(toArray(a), biasMode));
+  ASSERT_EQ(fl::var(a).scalarSync<float>(), af::var<float>(toArray(a), biasMode));
   ASSERT_TRUE(allClose(
       toArray(fl::var(a, {0})),
-      detail::condenseIndices(af::var(toArray(a), /* mode = */ biasMode, 0))));
+      detail::condenseIndices(af::var(toArray(a), /* mode = */ biasMode, 1))));
   ASSERT_TRUE(allClose(
       toArray(fl::var(a, {1})),
-      detail::condenseIndices(af::var(toArray(a), /* mode = */ biasMode, 1))));
+      detail::condenseIndices(af::var(toArray(a), /* mode = */ biasMode, 0))));
   // Make sure multidimension matches computing for all
   ASSERT_FLOAT_EQ(
-      toArray(fl::var(a)).scalar<float>(),
+      fl::var(a).scalarSync<float>(),
       af::var<float>(toArray(a), biasMode));
   ASSERT_FLOAT_EQ(
-      toArray(fl::var(a, {0, 1}, /* biased = */ true)).scalar<float>(),
+      fl::var(a, {0, 1}, /* biased = */ true).scalarSync<float>(),
       af::var<float>(toArray(a), /* mode = */ AF_VARIANCE_SAMPLE));
 }
 
@@ -366,25 +368,26 @@ TEST(ArrayFireTensorBaseTest, std) {
   auto a = fl::rand({3, 3});
   ASSERT_TRUE(allClose(
       toArray(fl::std(a, {0}, /* keepDims = */ true)),
-      af::stdev(toArray(a), AF_VARIANCE_POPULATION, 0)));
+      af::stdev(toArray(a), AF_VARIANCE_POPULATION, 1)));
   ASSERT_TRUE(allClose(
       toArray(fl::std(a, {1}, /* keepDims = */ true)),
-      af::stdev(toArray(a), AF_VARIANCE_POPULATION, 1)));
+      af::stdev(toArray(a), AF_VARIANCE_POPULATION, 0)));
   // Make sure multidimension matches computing for all
   ASSERT_FLOAT_EQ(
-      toArray(fl::std(a, {0, 1})).scalar<float>(),
+      fl::std(a, {0, 1}).scalarSync<float>(),
       std::sqrt(af::var<float>(toArray(a), AF_VARIANCE_POPULATION)));
 }
 
 TEST(ArrayFireTensorBaseTest, norm) {
   auto a = fl::rand({3, 3});
-  ASSERT_NEAR(fl::norm(a).scalar<float>(), af::norm(toArray(a)), 1e-4);
+  ASSERT_NEAR(fl::norm(a).scalarSync<float>(), static_cast<float>(af::norm(toArray(a))), 1e-4);
 }
 
 TEST(ArrayFireTensorBaseTest, tile) {
   auto a = fl::rand({3, 3});
+  // FL tile factors {4,5,6} -> AF tile factors reversed {6,5,4}
   ASSERT_TRUE(allClose(
-      toArray(fl::tile(a, {4, 5, 6})), af::tile(toArray(a), {4, 5, 6})));
+      toArray(fl::tile(a, {4, 5, 6})), af::tile(toArray(a), {6, 5, 4})));
 }
 
 TEST(ArrayFireTensorBaseTest, nonzero) {
@@ -399,21 +402,27 @@ TEST(ArrayFireTensorBaseTest, transpose) {
   ASSERT_TRUE(allClose(toArray(fl::transpose(a)), af::transpose(toArray(a))));
 
   auto b = fl::rand({3, 5, 4, 8});
+  // FL perm {2,0,1,3} -> AF perm {3-p3, 3-p2, 3-p1, 3-p0} = {0,2,3,1}
   ASSERT_TRUE(allClose(
       toArray(fl::transpose(b, {2, 0, 1, 3})),
-      af::reorder(toArray(b), 2, 0, 1, 3)));
+      af::reorder(toArray(b), 0, 2, 3, 1)));
 }
 
 TEST(ArrayFireTensorBaseTest, concatenate) {
-  std::vector<fl::Tensor> tensors(11);
-  ASSERT_THROW(fl::concatenate(tensors), std::invalid_argument);
+  // Concatenating more than 10 tensors should work (no artificial cap).
+  std::vector<fl::Tensor> tensors;
+  for (int i = 0; i < 11; ++i) {
+    tensors.push_back(fl::full({2, 3}, static_cast<float>(i)));
+  }
+  auto result = fl::concatenate(tensors, 0);
+  ASSERT_EQ(result.shape(), fl::Shape({22, 3}));
 }
 
 TEST(ArrayFireTensorBaseTest, device) {
   auto a = fl::rand({5, 5});
-  float* flPtr = a.device<float>();
+  float* flPtr = a.deviceSync<float>();
   af::array& arr = toArray(a);
-  float* afPtr = arr.device<float>();
+  float* afPtr = arr.device<float>();  // AF native, always blocking
   ASSERT_EQ(flPtr, afPtr);
   a.unlock();
   AF_CHECK(af_unlock_array(arr.get())); // safety
@@ -439,5 +448,8 @@ TEST(ArrayFireTensorBaseTest, emptyRangeIndexing) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   fl::init();
+  // These tests exercise bare ArrayFire tensors, which are no longer the
+  // compile-time default (see DefaultTensorType.h).
+  fl::setDefaultTensorType<ArrayFireTensor>();
   return RUN_ALL_TESTS();
 }

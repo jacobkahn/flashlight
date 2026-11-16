@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/contrib/modules/AsymmetricConv1D.h"
@@ -40,7 +41,7 @@ AsymmetricConv1D::AsymmetricConv1D(
 }
 
 AsymmetricConv1D::AsymmetricConv1D(
-    const Variable& w,
+    const Tensor& w,
     int sx /*= 1 */,
     fl::detail::IntOrPadMode px /*= 0 */,
     float futurePart /*= 0.5 */,
@@ -51,8 +52,8 @@ AsymmetricConv1D::AsymmetricConv1D(
 }
 
 AsymmetricConv1D::AsymmetricConv1D(
-    const Variable& w,
-    const Variable& b,
+    const Tensor& w,
+    const Tensor& b,
     int sx /*= 1 */,
     fl::detail::IntOrPadMode px /*= 0 */,
     float futurePart /*= 0.5 */,
@@ -62,17 +63,19 @@ AsymmetricConv1D::AsymmetricConv1D(
   checkParams();
 }
 
-Variable AsymmetricConv1D::forward(const Variable& input) {
+Tensor AsymmetricConv1D::forward(const Tensor& input) {
+  // Row-major: input is {N, C, H, W}. xFilter maps to kW (dim 3).
+  // Time is on dim 3 (W).
   auto px =
-      fl::derivePadding(input.dim(0), xFilter_, xStride_, xPad_, xDilation_);
+      fl::derivePadding(input.dim(3), xFilter_, xStride_, xPad_, xDilation_);
   if (!(px >= 0)) {
     throw std::invalid_argument("invalid padding for AsymmetricConv1D");
   }
-  Variable output;
+  Tensor output;
   int cutPx = std::abs(2 * (0.5 - futurePart_)) * px;
   int asymmetryPx = px + cutPx;
   if (bias_) {
-    output = conv2d(
+    output = autograd::conv2d(
         input,
         params_[0],
         params_[1],
@@ -84,7 +87,7 @@ Variable AsymmetricConv1D::forward(const Variable& input) {
         yDilation_,
         groups_);
   } else {
-    output = conv2d(
+    output = autograd::conv2d(
         input,
         params_[0],
         xStride_,
@@ -95,10 +98,13 @@ Variable AsymmetricConv1D::forward(const Variable& input) {
         yDilation_,
         groups_);
   }
+  // Slice on dim 3 (W = time)
   if (futurePart_ < 0.5) {
-    output = output(fl::range(0, output.dim(0) - 2 * cutPx));
+    output = output(fl::span, fl::span, fl::span,
+        fl::range(0, output.dim(3) - 2 * cutPx));
   } else if (futurePart_ > 0.5) {
-    output = output(fl::range(2 * cutPx, output.dim(0)));
+    output = output(fl::span, fl::span, fl::span,
+        fl::range(2 * cutPx, output.dim(3)));
   }
   return output;
 }
@@ -108,10 +114,7 @@ std::unique_ptr<Module> AsymmetricConv1D::clone() const {
 }
 
 std::string AsymmetricConv1D::prettyString() const {
-  std::ostringstream ss;
-  ss << "AsymmetricConv1D";
-  ss << " (" << Conv2D::prettyString() << ")";
-  return ss.str();
+  return std::format("AsymmetricConv1D ({})", Conv2D::prettyString());
 }
 
 } // namespace fl

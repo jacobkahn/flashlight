@@ -9,10 +9,10 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -54,7 +54,7 @@ class FL_API RMSPropOptimizer : public FirstOrderOptimizer {
    * the squared gradients.
    */
   RMSPropOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate,
       float rho = 0.99,
       float epsilon = 1e-8,

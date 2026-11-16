@@ -17,8 +17,7 @@ from the Facebook AI Research and the creators of Torch, TensorFlow, Eigen and
 Deep Speech. Its core features include:
 - **Total internal modifiability** including [internal APIs for tensor computation](flashlight/fl/tensor/README.md).
 - **A small footprint**, with the core clocking in at under 10 MB and 20k lines of C++.
-- **High-performance defaults** featuring just-in-time kernel compilation with modern C++ via the [*ArrayFire*](https://github.com/arrayfire/arrayfire)
-tensor library.
+- **High-performance defaults** featuring a lazy, just-in-time compiled tensor runtime over native CPU ([oneDNN](https://github.com/oneapi-src/oneDNN)) and CUDA (cuBLAS, cuDNN) backends. An [ArrayFire](https://github.com/arrayfire/arrayfire) backend is available as an opt-in.
 - An emphasis on efficiency and scale.
 
 Native support in C++ and simple extensibility makes Flashlight a powerful research framework that enables fast iteration on new experimental setups and algorithms with little unopinionation and without sacrificing performance. In a single repository, Flashlight provides [apps](https://github.com/flashlight/flashlight/tree/master/flashlight/app) for research across multiple domains:
@@ -31,7 +30,7 @@ Native support in C++ and simple extensibility makes Flashlight a powerful resea
 
 Flashlight is broken down into a few parts:
 - [**`flashlight/lib`**](flashlight/lib) contains kernels and standalone utilities for audio processing and more.
-- [**`flashlight/fl`**](flashlight/fl) is the core tensor interface and neural network library using the [ArrayFire](https://github.com/arrayfire/arrayfire) tensor library by default.
+- [**`flashlight/fl`**](flashlight/fl) is the core tensor interface and neural network library, with native CPU and CUDA tensor backends by default (ArrayFire is opt-in).
 - [**`flashlight/pkg`**](flashlight/pkg) are domain packages for speech, vision, and text built on the core.
 - [**`flashlight/app`**](flashlight/app) are applications of the core library to machine learning across domains.
 
@@ -158,7 +157,7 @@ To build the Flashlight CUDA backend from source using dependencies installed wi
 ```shell
 ./vcpkg install \
     cuda intel-mkl fftw3 cub kenlm                \ # if building flashlight libraries
-    arrayfire[cuda] cudnn nccl openmpi cereal stb \ # if building the flashlight neural net library
+    onednn cudnn nccl openmpi cereal stb          \ # if building the flashlight neural net library
     gflags glog                                   \ # if building any flashlight apps
     libsndfile                                    \ # if building the flashlight asr app
     gtest                                           # optional, if building tests
@@ -171,13 +170,15 @@ To build the Flashlight CPU backend from source using dependencies installed wit
 ```shell
 ./vcpkg install \
     intel-mkl fftw3 kenlm                              \ # for flashlight libraries
-    arrayfire[cpu] gloo[mpi] openmpi onednn cereal stb \ # for the flashlight neural net library
+    gloo[mpi] openmpi onednn cereal stb                \ # for the flashlight neural net library
     gflags glog                                        \ # for the flashlight runtime pkg (any flashlight apps using it)
     libsndfile                                         \ # for the flashlight speech pkg
     gtest                                                # optional, for tests
 ```
 
 </details>
+
+ArrayFire is only needed for the optional ArrayFire backend (`-DFL_USE_ARRAYFIRE=ON`); install `arrayfire[cuda]` or `arrayfire[cpu]` in that case.
 
 ##### Build Using the `vcpkg` Toolchain File
 To build Flashlight from source with these dependencies, clone the repository:
@@ -189,11 +190,12 @@ Then, build from source using `vcpkg`'s [CMake toolchain](https://github.com/mic
 ```shell
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
-    -DFL_BUILD_ARRAYFIRE=ON \
+    -DFL_USE_CUDA=ON \
     -DCMAKE_TOOLCHAIN_FILE=[path to your vcpkg clone]/scripts/buildsystems/vcpkg.cmake
 make -j$(nproc)
 make install -j$(nproc) # only if you want to install Flashlight for external use
 ```
+Omit `-DFL_USE_CUDA=ON` for a CPU-only build.
 To build a subset of Flashlight's features, see the [build options](#build-options) below.
 
 ### Building from Source
@@ -208,7 +210,7 @@ mkdir -p build && cd build
 ```
 Then build all Flashlight components with:
 ```
-cmake .. -DCMAKE_BUILD_TYPE=Release -DFL_BUILD_ARRAYFIRE=ON [...build options]
+cmake .. -DCMAKE_BUILD_TYPE=Release [-DFL_USE_CUDA=ON] [...build options]
 make -j$(nproc)
 make install
 ```
@@ -222,13 +224,14 @@ Flashlight uses modern CMake and `IMPORTED` targets for most dependencies. If a 
 
 #### Minimal setup on macOS
 
-On MacOS, ArrayFire can be installed with homebrew and the Flashlight core can be built as follows:
+On MacOS, ArrayFire can be installed with homebrew and the Flashlight core can be built with the optional ArrayFire backend (OpenCL) as follows:
 
 ```
 brew install arrayfire
 cmake .. \
+      -DFL_USE_ARRAYFIRE=ON \
       -DFL_ARRAYFIRE_USE_OPENCL=ON \
-      -DFL_USE_ONEDNN=OFF \
+      -DFL_USE_CPU=OFF \
       -DFL_BUILD_TESTS=OFF \
       -DFL_BUILD_EXAMPLES=OFF \
       -DFL_BUILD_SCRIPTS=OFF \
@@ -263,9 +266,13 @@ Dependencies marked with `†` are installable via `vcpkg`. See the [instruction
     <td>A BLAS library (<a href="https://software.intel.com/content/www/us/en/develop/tools/oneapi/base-toolkit/download.html">Intel MKL</a> &gt;= 2018, OpenBLAS†, etc)</td>
   </tr>
   <tr>
-    <td rowspan="3">core</td>
+    <td rowspan="4">core</td>
     <td>Any</td>
-    <td><a href="https://github.com/arrayfire/arrayfire#installation">ArrayFire</a> &gt;= 3.7.3†, an MPI library^(<a href="https://www.open-mpi.org/">OpenMPI</a>†, etc),&nbsp;&nbsp;<a href="https://github.com/USCiLab/cereal">cereal</a>*† &gt;= 1.3.0, <a href="https://github.com/nothings/stb">stb</a>*†</td>
+    <td>An MPI library^(<a href="https://www.open-mpi.org/">OpenMPI</a>†, etc),&nbsp;&nbsp;<a href="https://github.com/USCiLab/cereal">cereal</a>*† &gt;= 1.3.0, <a href="https://github.com/nothings/stb">stb</a>*†</td>
+  </tr>
+  <tr>
+    <td>ArrayFire (optional)</td>
+    <td><a href="https://github.com/arrayfire/arrayfire#installation">ArrayFire</a> &gt;= 3.7.3†, only with <code>FL_USE_ARRAYFIRE=ON</code></td>
   </tr>
   <tr>
     <td>CUDA</td>
@@ -273,7 +280,7 @@ Dependencies marked with `†` are installable via `vcpkg`. See the [instruction
   </tr>
   <tr>
     <td>CPU</td>
-    <td><a href="https://github.com/oneapi-src/oneDNN">oneDNN</a>† &gt;= 2.5.2, <a href="https://github.com/facebookincubator/gloo">gloo</a> (<a href="https://github.com/facebookincubator/gloo/blob/01e2c2660cd43963ce1fe3e21220ac01f07d9a4b/docs/rendezvous.md#using-mpi">with MPI</a>)*^†</td>
+    <td><a href="https://github.com/oneapi-src/oneDNN">oneDNN</a>† &gt;= 3.5 (the CPU backend is built by default, including in CUDA builds), <a href="https://github.com/facebookincubator/gloo">gloo</a> (<a href="https://github.com/facebookincubator/gloo/blob/01e2c2660cd43963ce1fe3e21220ac01f07d9a4b/docs/rendezvous.md#using-mpi">with MPI</a>)*^†</td>
   </tr>
   <tr>
     <td>app: all </td>
@@ -322,12 +329,31 @@ The Flashlight CMake build accepts the following build options (prefixed with `-
 </thead>
 <tbody>
   <tr>
-    <td rowspan="2">FL_BUILD_ARRAYFIRE</td>
+    <td>FL_USE_CPU</td>
     <td>ON, OFF</td>
     <td>ON</td>
-    <td>Build Flashlight with the ArrayFire backend.</td>
+    <td>Build the native CPU tensor backend (oneDNN). It is the default backend when CUDA isn't enabled.</td>
   </tr>
   <tr>
+    <td>FL_USE_CUDA</td>
+    <td>ON, OFF</td>
+    <td>OFF</td>
+    <td>Build CUDA support, including the native CUDA tensor backend (cuBLAS, cuDNN), which then becomes the default backend.</td>
+  </tr>
+  <tr>
+    <td>FL_USE_NATIVE_CUDA</td>
+    <td>ON, OFF</td>
+    <td>ON if <code>FL_USE_CUDA</code></td>
+    <td>Build the native CUDA tensor backend. Only available with <code>FL_USE_CUDA=ON</code>.</td>
+  </tr>
+  <tr>
+    <td>FL_USE_ARRAYFIRE</td>
+    <td>ON, OFF</td>
+    <td>OFF</td>
+    <td>Build the optional ArrayFire tensor backend (needed by <code>pkg/halide</code> and the <code>pkg/vision</code> tensor extension). It is the default backend only if neither native backend is built.</td>
+  </tr>
+  <tr>
+    <td>FL_BUILD_STANDALONE</td>
     <td>ON, OFF</td>
     <td>ON</td>
     <td>Downloads/builds some dependencies if not found.</td>
@@ -389,6 +415,12 @@ The Flashlight CMake build accepts the following build options (prefixed with `-
     <td>ON, OFF</td>
     <td>ON</td>
     <td>Build tests.</td>
+  </tr>
+  <tr>
+    <td>FL_TEST_NUM_THREADS</td>
+    <td>Integer or empty</td>
+    <td>empty</td>
+    <td>If set, tests run through <code>ctest</code> get <code>OMP_NUM_THREADS</code> set to this value. Flashlight never sets a thread count itself; OpenMP's default is every logical CPU, which makes small CPU ops very slow on large multi-socket/SMT machines, so set this (or <code>OMP_NUM_THREADS</code>) there.</td>
   </tr>
   <tr>
     <td>FL_BUILD_EXAMPLES</td>

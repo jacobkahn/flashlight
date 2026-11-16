@@ -7,9 +7,9 @@
 
 #pragma once
 
-namespace fl {
+#include "flashlight/fl/tensor/Tensor.h"
 
-class Variable;
+namespace fl {
 
 /**
  * An interface for creating tensor reduction algorithms/rules.
@@ -23,13 +23,13 @@ class Reducer {
   virtual ~Reducer() = default;
 
   /**
-   * Have the Reducer ingest a Variable. What happens next is
+   * Have the Reducer ingest a Tensor. What happens next is
    * implementation-specific; the implementation may cache the value,
    * process/synchronize immediately, or ignore the value.
    *
-   * @param[in] var a Variable to be ingested
+   * @param[in] var a Tensor to be ingested
    */
-  virtual void add(Variable& var) = 0;
+  virtual void add(Tensor& var) = 0;
 
   /**
    * Forces a reduction/synchronization of the Reducer.

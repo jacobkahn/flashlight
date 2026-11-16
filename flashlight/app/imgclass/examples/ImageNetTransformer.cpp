@@ -104,9 +104,7 @@ DEFINE_bool(
     fl_amp_use_mixed_precision,
     false,
     "[train] Use mixed precision for training - scale loss and gradients up and down "
-    "by a scale factor that changes over time. If no fl optim mode is "
-    "specified with --fl_optim_mode when passing this flag, automatically "
-    "sets the optim mode to O1.");
+    "by a scale factor that changes over time.");
 DEFINE_double(
     fl_amp_scale_factor,
     65536.,
@@ -120,11 +118,6 @@ DEFINE_double(
     fl_amp_max_scale_factor,
     65536.,
     "[train] Maximum value for the loss scale factor in mixed precision training");
-DEFINE_string(
-    fl_optim_mode,
-    "",
-    "[train] Sets the flashlight optimization mode. "
-    "Optim modes can be O1, O2, or O3.");
 
 using namespace fl;
 using fl::pkg::vision::compose;
@@ -146,15 +139,15 @@ std::tuple<double, double, double> evalLoop(
   for (auto& example : dataset) {
     auto inputs = noGrad(example[kImagenetInputIdx]);
     auto output = model->forward({inputs}).front();
-    output = logSoftmax(output, 0).astype(output.type());
+    output = autograd::logSoftmax(output, 0).astype(output.type());
 
     auto target = noGrad(example[kImagenetTargetIdx]);
 
     // Compute and record the loss.
-    auto loss = categoricalCrossEntropy(output, target);
-    lossMeter.add(loss.tensor().asScalar<float>());
-    top5Acc.add(output.tensor(), target.tensor());
-    top1Acc.add(output.tensor(), target.tensor());
+    auto loss = autograd::categoricalCrossEntropy(output, target);
+    lossMeter.add(loss.asScalar<float>());
+    top5Acc.add(output, target);
+    top1Acc.add(output, target);
   }
   model->train();
   fl::pkg::runtime::syncMeter(lossMeter);
@@ -284,13 +277,11 @@ int main(int argc, char** argv) {
   // Setting different seeds for better randomness
   fl::setSeed(worldRank + FLAGS_train_seed);
   std::srand(worldRank + FLAGS_train_seed);
-  fl::DynamicBenchmark::setBenchmarkMode(true);
-
   //////////////////////////
   //  Optimizer
   /////////////////////////
   auto modelParams = model->params();
-  std::vector<fl::Variable> paramsWithWeightDecay(
+  std::vector<fl::Tensor> paramsWithWeightDecay(
       modelParams.begin() + 2, modelParams.end());
   auto optWithWeightDecay = AdamOptimizer(
       paramsWithWeightDecay,
@@ -301,7 +292,7 @@ int main(int argc, char** argv) {
       FLAGS_train_wd);
 
   // Excluding class token and positional embedding from weight decay
-  std::vector<fl::Variable> paramsNoWeightDecay(
+  std::vector<fl::Tensor> paramsNoWeightDecay(
       modelParams.begin(), modelParams.begin() + 2);
   auto optNoWeightDecay = AdamOptimizer(
       paramsNoWeightDecay,
@@ -363,11 +354,6 @@ int main(int argc, char** argv) {
   if (FLAGS_fl_amp_use_mixed_precision) {
     FL_LOG_MASTER(INFO)
         << "Mixed precision training enabled. Will perform loss scaling.";
-    auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-        ? fl::OptimLevel::DEFAULT
-        : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-    fl::OptimMode::get().setOptimLevel(flOptimLevel);
-
     dynamicScaler = std::make_shared<fl::pkg::runtime::DynamicScaler>(
         FLAGS_fl_amp_scale_factor,
         FLAGS_fl_amp_max_scale_factor,
@@ -427,9 +413,7 @@ int main(int argc, char** argv) {
       }
       auto input = noGrad(inputArray);
       auto target = noGrad(targetArray);
-      if (FLAGS_fl_amp_use_mixed_precision && FLAGS_fl_optim_mode.empty()) {
-        // In case AMP is activated with DEFAULT mode,
-        // we manually cast input to fp16.
+      if (FLAGS_fl_amp_use_mixed_precision) {
         input = input.astype(fl::dtype::f16);
       }
 
@@ -440,11 +424,11 @@ int main(int argc, char** argv) {
         // 2. Forward
         fwdTimeMeter.resume();
         auto output = model->forward({input}).front();
-        output = logSoftmax(output, 0).astype(output.type());
+        output = autograd::logSoftmax(output, 0).astype(output.type());
 
         critFwdTimeMeter.resume();
         auto y = target.astype(output.type());
-        auto loss = fl::mean(fl::sum(fl::negate(y * output), {0}), {0});
+        auto loss = autograd::mean(autograd::sum(autograd::negative(y * output), {0}), {0});
         fl::sync();
         fwdTimeMeter.stopAndIncUnit();
         critFwdTimeMeter.stopAndIncUnit();
@@ -460,7 +444,7 @@ int main(int argc, char** argv) {
         if (!scaleIsValid) {
           continue;
         }
-        trainLossMeter.add(loss.tensor());
+        trainLossMeter.add(loss);
         break;
       }
 

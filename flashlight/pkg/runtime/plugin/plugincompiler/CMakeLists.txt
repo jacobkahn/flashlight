@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # Detect if we're doing an in-source or an out-of-source build
 set(FL_PLUGIN_LINK_TARGET)
 if (NOT TARGET flashlight)

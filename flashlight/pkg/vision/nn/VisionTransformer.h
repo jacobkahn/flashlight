@@ -39,7 +39,7 @@ class VisionTransformer : public Container {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
   std::string prettyString() const override;
 
  private:
@@ -57,10 +57,10 @@ class VisionTransformer : public Container {
   void createLayers();
   void copy(const VisionTransformer& other);
 
-  Variable gelu(const Variable& input);
-  Variable mlp(const Variable& input);
-  Variable selfAttention(const Variable& input);
-  Variable dropPath(const Variable& input);
+  Tensor gelu(const Tensor& input);
+  Tensor mlp(const Tensor& input);
+  Tensor selfAttention(const Tensor& input);
+  Tensor dropPath(const Tensor& input);
 
   FL_SAVE_LOAD_WITH_BASE(
       Container,

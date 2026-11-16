@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <numeric>
 #include <stdexcept>
 
@@ -54,38 +55,37 @@ SinusoidalPositionEmbedding& SinusoidalPositionEmbedding::operator=(
   return *this;
 }
 
-std::vector<Variable> SinusoidalPositionEmbedding::forward(
-    const std::vector<Variable>& input) {
-  if (input[0].dim(0) != layerDim_) {
+std::vector<Tensor> SinusoidalPositionEmbedding::forward(
+    const std::vector<Tensor>& input) {
+  // Row-major: input is {B, T, C} or {B, T, C, 1}
+  // C is always at dim 2
+  if (input[0].dim(2) != layerDim_) {
     throw std::invalid_argument(
-        "Input dimenstion " + std::to_string(input[0].dim(0)) +
+        "Input dimension " + std::to_string(input[0].dim(2)) +
         " and Embedding dimension " + std::to_string(layerDim_) +
         " are different.");
   }
-  // Retrieve the number of tokens (positions) and the numeric type (floating
-  // point precision).
-  const int nPositions = input[0].dim(1);
+  // Retrieve the number of tokens (positions) and the numeric type.
+  const int nPositions = input[0].dim(1); // T
   const auto numType = input[0].type();
-  // Generate the tensor of positions for each token vector [embedding size, num
-  // positions].
-  //  positions = [[ 0,  0, ..],
-  //               [ 1,  1, ..],
-  //               [.., .., ..]]
-  Tensor positions = fl::iota({1, nPositions}, {layerDim_}, numType);
-  // Generate the embedding transformation with the precomputed scale and shift
-  // factors.
+  // Generate the tensor of positions {T, C}:
+  //   positions[t][c] = t (time index, same across channels)
+  Tensor positions = fl::iota({nPositions, 1}, {1, layerDim_}, numType);
+  // Generate the embedding transformation with the precomputed scale and shift.
+  // scale_ and cosShifts_ are {layerDim_} = {C}. Reshape to {1, C} for
+  // broadcasting.
+  auto scaleRM = fl::unsqueeze(scale_.astype(numType), 0);
+  auto shiftsRM = fl::unsqueeze(cosShifts_.astype(numType), 0);
   positions = fl::sin(
-      positions * fl::tile(scale_.astype(numType), {1, nPositions}) +
-      fl::tile(cosShifts_.astype(numType), {1, nPositions}));
-  // Convert the positional embedding into a variable (for gradient tracking).
-  Variable embeddingsPos = Variable(positions, false);
-  // Return the inputs with the positional embeddings tiled over the batch
-  // dimension.
-  return {input[0] * inputScale_ + tileAs(embeddingsPos, input[0])};
+      positions * fl::tile(scaleRM, {nPositions, 1}) +
+      fl::tile(shiftsRM, {nPositions, 1}));
+  // positions: {T, C}. tileAs broadcasts to input shape (adds batch dim).
+  Tensor embeddingsPos = Tensor(positions, false);
+  return {input[0] * inputScale_ + autograd::tileAs(embeddingsPos, input[0])};
 }
 
-std::vector<Variable> SinusoidalPositionEmbedding::operator()(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> SinusoidalPositionEmbedding::operator()(
+    const std::vector<Tensor>& input) {
   return forward(input);
 }
 
@@ -94,10 +94,9 @@ std::unique_ptr<Module> SinusoidalPositionEmbedding::clone() const {
 }
 
 std::string SinusoidalPositionEmbedding::prettyString() const {
-  std::ostringstream ss;
-  ss << "Sinusoidal Position Embedding Layer (embDim: " << layerDim_
-     << "), (input scale " << inputScale_ << ")";
-  return ss.str();
+  return std::format(
+      "Sinusoidal Position Embedding Layer (embDim: {}), (input scale {})",
+      layerDim_, inputScale_);
 }
 
 SinusoidalPositionEmbedding::SinusoidalPositionEmbedding() = default;

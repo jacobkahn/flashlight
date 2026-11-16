@@ -21,50 +21,50 @@ class AttentionBase : public fl::Container {
  public:
   AttentionBase() {}
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override {
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override {
     if (inputs.size() != 3 && inputs.size() != 4 && inputs.size() != 5) {
       throw std::invalid_argument(
           "Attention encoder-decoder: Invalid inputs size, should be 3, 4, or 5 arguments");
     }
 
-    auto logAttnWeight = inputs.size() == 4 ? inputs[3] : Variable();
-    auto xEncodedSizes = inputs.size() == 5 ? inputs[4] : Variable();
+    auto logAttnWeight = inputs.size() == 4 ? inputs[3] : Tensor();
+    auto xEncodedSizes = inputs.size() == 5 ? inputs[4] : Tensor();
     auto res = forwardBase(
         inputs[0], inputs[1], inputs[2], logAttnWeight, xEncodedSizes);
     return {res.first, res.second};
   }
 
-  std::pair<Variable, Variable> forward(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn) {
+  std::pair<Tensor, Tensor> forward(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn) {
     return forward(
         state,
         xEncoded,
         prevAttn,
-        Variable() /* logAttnWeight */,
-        Variable() /* xEncodedSizes */);
+        Tensor() /* logAttnWeight */,
+        Tensor() /* xEncodedSizes */);
   }
 
-  std::pair<Variable, Variable> forward(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight) {
+  std::pair<Tensor, Tensor> forward(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight) {
     return forwardBase(
         state,
         xEncoded,
         prevAttn,
         logAttnWeight,
-        Variable() /* xEncodedSizes */);
+        Tensor() /* xEncodedSizes */);
   }
 
-  virtual std::pair<Variable, Variable> forward(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight,
-      const Variable& xEncodedSizes) {
+  virtual std::pair<Tensor, Tensor> forward(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight,
+      const Tensor& xEncodedSizes) {
     return forwardBase(state, xEncoded, prevAttn, logAttnWeight, xEncodedSizes);
   }
 
@@ -81,12 +81,12 @@ class AttentionBase : public fl::Container {
    * [targetlen, seqlen, batchsize] for attention,
    * [hiddendim, targetlen, batchsize] for summary
    */
-  virtual std::pair<Variable, Variable> forwardBase(
-      const Variable& state,
-      const Variable& xEncoded,
-      const Variable& prevAttn,
-      const Variable& logAttnWeight,
-      const Variable& xEncodedSizes) = 0;
+  virtual std::pair<Tensor, Tensor> forwardBase(
+      const Tensor& state,
+      const Tensor& xEncoded,
+      const Tensor& prevAttn,
+      const Tensor& logAttnWeight,
+      const Tensor& xEncodedSizes) = 0;
 
  private:
   FL_SAVE_LOAD_WITH_BASE(fl::Container)

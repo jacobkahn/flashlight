@@ -52,10 +52,10 @@ double alexnet() {
   model.add(ReLU());
   model.add(Pool2D(3, 3, 2, 2)); // 13 -> 6
 
-  auto input = Variable(fl::rand({224, 224, 3, 128}) * 2 - 2, false);
+  auto input = Tensor(fl::rand({224, 224, 3, 128}) * 2 - 2, false);
 
   auto b = model.forward(input);
-  auto gradoutput = Variable(fl::rand(b.shape()) * 2 - 2, false);
+  auto gradoutput = Tensor(fl::rand(b.shape()) * 2 - 2, false);
 
   auto alexnet_fn = [&]() {
     auto output = model.forward(input);
@@ -71,9 +71,9 @@ double embedding() {
   Embedding embed(embed_dim, vocab_size);
 
   int num_elems = 400;
-  Variable input(
+  Tensor input(
       (fl::rand({num_elems}) * vocab_size).astype(fl::dtype::s32), false);
-  Variable grad_output(
+  Tensor grad_output(
       fl::randn({embed_dim, num_elems}, fl::dtype::f32), false);
 
   auto embed_fn = [&]() {
@@ -89,8 +89,8 @@ double linear() {
   int N = 512;
   int B = 8;
   int T = 2;
-  Variable input(fl::rand({N, T, B}, fl::dtype::f32), true);
-  Variable dout(fl::rand({M, T, B}, fl::dtype::f32), false);
+  Tensor input(fl::rand({N, T, B}, fl::dtype::f32), true);
+  Tensor dout(fl::rand({M, T, B}, fl::dtype::f32), false);
   Linear lin(N, M);
 
   auto lin_fn = [&]() {
@@ -109,8 +109,8 @@ double batchNorm() {
   int C = 512;
   int H = 32;
   int W = 32;
-  Variable input(fl::rand({W, H, C, N}, fl::dtype::f32), true);
-  Variable dout(fl::rand({W, H, C, N}, fl::dtype::f32), true);
+  Tensor input(fl::rand({W, H, C, N}, fl::dtype::f32), true);
+  Tensor dout(fl::rand({W, H, C, N}, fl::dtype::f32), true);
   BatchNorm bn(2, C); // Spatial batchnorm
 
   auto bn_fn = [&]() {
@@ -129,8 +129,8 @@ double layerNorm() {
   int C = 512;
   int H = 32;
   int W = 32;
-  Variable input(fl::rand({W, H, C, N}, fl::dtype::f32), true);
-  Variable dout(fl::rand({W, H, C, N}, fl::dtype::f32), true);
+  Tensor input(fl::rand({W, H, C, N}, fl::dtype::f32), true);
+  Tensor dout(fl::rand({W, H, C, N}, fl::dtype::f32), true);
   LayerNorm ln(3);
 
   auto ln_fn = [&]() {

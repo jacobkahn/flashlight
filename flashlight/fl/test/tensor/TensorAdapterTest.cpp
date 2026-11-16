@@ -1,7 +1,7 @@
 /*
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
- * This source code is licensed under the MIT-style license found in the
+ * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
@@ -9,8 +9,9 @@
 
 #include "flashlight/fl/tensor/DefaultTensorType.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace ::testing;
 using namespace fl;
@@ -39,6 +40,6 @@ TEST(TensorBaseTest, hasAdapter) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

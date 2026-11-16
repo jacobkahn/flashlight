@@ -17,8 +17,8 @@ class SoftPretrainWindow : public WindowBase {
  public:
   explicit SoftPretrainWindow(double std);
 
-  Variable computeWindow(
-      const Variable& prevAttn,
+  Tensor computeWindow(
+      const Tensor& prevAttn,
       int step,
       int targetLen,
       int inputSteps,
@@ -26,7 +26,7 @@ class SoftPretrainWindow : public WindowBase {
       const Tensor& inputSizes = Tensor(),
       const Tensor& targetSizes = Tensor()) const override;
 
-  Variable computeVectorizedWindow(
+  Tensor computeVectorizedWindow(
       int targetLen,
       int inputSteps,
       int batchSize,
@@ -38,7 +38,7 @@ class SoftPretrainWindow : public WindowBase {
 
   double std_;
 
-  Variable compute(
+  Tensor compute(
       int targetLen,
       int inputSteps,
       int batchSize,

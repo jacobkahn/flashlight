@@ -44,9 +44,9 @@ class FL_API PositionEmbedding : public Module {
    * initialized absolute position embeddings, that can be learned end-to-end.
    *
    */
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
-  std::vector<Variable> operator()(const std::vector<Variable>& input);
+  std::vector<Tensor> operator()(const std::vector<Tensor>& input);
 
   std::unique_ptr<Module> clone() const override;
 

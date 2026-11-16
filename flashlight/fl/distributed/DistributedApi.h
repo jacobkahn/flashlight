@@ -11,9 +11,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 /**
@@ -59,16 +59,16 @@ FL_API int getWorldRank();
 FL_API int getWorldSize();
 
 /**
- * Synchronizes a the array wrapped by the Variable with allreduce.
+ * Synchronizes a the array wrapped by the Tensor with allreduce.
  *
  * @param[in] var a variable whose array will be synchronized
- * @param[in] scale scale the Variable after allreduce by this factor
+ * @param[in] scale scale the Tensor after allreduce by this factor
  * @param[in] async perform the allReduce operation asynchronously in a separate
  * compute stream to the Flashlight compute stream. NB: if true,
  * ``syncDistributed`` *must* be called in order to ensure the Flashlight CUDA
  * stream waits until ``allReduce`` is complete and uses updated values.
  */
-FL_API void allReduce(Variable& var, double scale = 1.0, bool async = false);
+FL_API void allReduce(Tensor& var, double scale = 1.0, bool async = false);
 
 /**
  * Synchronizes a single Flashlight array with allreduce.
@@ -85,18 +85,18 @@ FL_API void allReduce(Tensor& arr, bool async = false);
 /**
  * Synchronizes a the arrays wrapped by a vector of Variables with allreduce.
  *
- * @param[in] vars `Variable`s whose arrays will be synchronized
- * @param[in] scale scale the Variable after allreduce by this factor
+ * @param[in] vars `Tensor`s whose arrays will be synchronized
+ * @param[in] scale scale the Tensor after allreduce by this factor
  * @param[in] async perform the allReduce operation asynchronously in a separate
  * compute stream to the Flashlight compute stream. NB: if used,
  * ``syncDistributed`` *must* be called in order to ensure asynchrnous reduction
  * and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
- * @param[in] contiguous copy data for each Variable into a contiguous buffer
+ * @param[in] contiguous copy data for each Tensor into a contiguous buffer
  * before performing the allReduce operation
  */
 FL_API void allReduceMultiple(
-    std::vector<Variable> vars,
+    std::vector<Tensor> vars,
     double scale = 1.0,
     bool async = false,
     bool contiguous = false);
@@ -110,7 +110,7 @@ FL_API void allReduceMultiple(
  * ``syncDistributed`` *must* be called in order to ensure asynchrnous reduction
  * and worker streams wait until ``allReduce`` is complete and uses
  * updated values.
- * @param[in] contiguous copy data for each Variable into a contiguous buffer
+ * @param[in] contiguous copy data for each Tensor into a contiguous buffer
  * before performing the allReduce operation
  */
 FL_API void allReduceMultiple(

@@ -41,10 +41,10 @@ class FL_API Embedding : public UnaryModule {
   /**
    * Constructs an Embedding module from the weight parameter \f$w\f$.
    *
-   * @param w the 2D `Variable` tensor for the weight \f$w\f$.
+   * @param w the 2D `Tensor` tensor for the weight \f$w\f$.
    *  The shape should be [`embeddingDim`, `numEmbeddings`].
    */
-  explicit Embedding(const Variable& w);
+  explicit Embedding(const Tensor& w);
 
   /**
    * Constructs an Embedding module from another, performing a copy of the
@@ -66,7 +66,7 @@ class FL_API Embedding : public UnaryModule {
 
   Embedding& operator=(Embedding&& other) = default;
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

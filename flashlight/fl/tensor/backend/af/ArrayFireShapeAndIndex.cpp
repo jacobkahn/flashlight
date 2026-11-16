@@ -16,22 +16,27 @@
 
 namespace fl {
 
-Tensor ArrayFireBackend::reshape(const Tensor& tensor, const Shape& shape) {
-  return toTensor<ArrayFireTensor>(
+void ArrayFireBackend::reshape(Tensor& out, const Tensor& tensor, const Shape& shape,
+    std::shared_ptr<const Stream> /* stream */) {
+  out = toTensor<ArrayFireTensor>(
       af::moddims(toArray(tensor), detail::flToAfDims(shape)), shape.ndim());
 }
 
-Tensor ArrayFireBackend::transpose(
+void ArrayFireBackend::transpose(
+    Tensor& out,
     const Tensor& tensor,
-    const Shape& axes /* = {} */) {
+    const Shape& axes /* = {} */,
+    std::shared_ptr<const Stream> /* stream */) {
   if (tensor.ndim() == 1) {
-    return tensor;
+    out = tensor;
   } else if (
       tensor.ndim() == 2 && (axes.ndim() == 0 || axes == Shape({1, 0}))) {
     // fastpath for matrices
-    return toTensor<ArrayFireTensor>(
+    out = toTensor<ArrayFireTensor>(
         af::transpose(toArray(tensor)), tensor.ndim());
   } else if (axes.ndim() == 0) {
+    // Default: reverse all dimensions. This is the same in both FL and AF
+    // space since reversing is symmetric.
     std::vector<Dim> dims(AF_MAX_DIMS);
     std::iota(std::begin(dims), std::end(dims), 0);
     // Compute the reversed dimensions for as many ndims as are in the input
@@ -40,7 +45,7 @@ Tensor ArrayFireBackend::transpose(
     }
 
     // flip all dimensions
-    return toTensor<ArrayFireTensor>(
+    out = toTensor<ArrayFireTensor>(
         af::reorder(toArray(tensor), dims[0], dims[1], dims[2], dims[3]),
         tensor.ndim());
   } else {
@@ -55,7 +60,13 @@ Tensor ArrayFireBackend::transpose(
           "permutation - axes must have the same number of "
           "dimensions as the tensor");
     }
-    // reorder based on specified dimensions
+    // Convert FL permutation to AF permutation.
+    // FL perm axes[i] means: result FL dim i comes from input FL dim axes[i].
+    // AF perm d[k] means: result AF dim k comes from input AF dim d[k].
+    // FL dim j = AF dim (ndim-1-j), so:
+    //   d[ndim-1-i] = ndim-1-axes[i]
+    // i.e. d[k] = ndim-1-axes[ndim-1-k]
+    unsigned ndim = tensor.ndim();
     std::vector<dim_t> d(AF_MAX_DIMS);
     std::iota(std::begin(d), std::end(d), 0);
     for (size_t i = 0; i < axes.ndim(); ++i) {
@@ -64,84 +75,127 @@ Tensor ArrayFireBackend::transpose(
             "ArrayFireBackend::transpose - given dimension is larger "
             "than the number of dimensions in the tensor");
       }
-
-      d[i] = axes[i];
+      d[ndim - 1 - i] = ndim - 1 - axes[i];
     }
-    return toTensor<ArrayFireTensor>(
+    out = toTensor<ArrayFireTensor>(
         af::reorder(toArray(tensor), d[0], d[1], d[2], d[3]), tensor.ndim());
   }
 }
 
-Tensor ArrayFireBackend::tile(const Tensor& tensor, const Shape& shape) {
-  return toTensor<ArrayFireTensor>(
-      af::tile(toArray(tensor), detail::flToAfDims(shape)),
-      // TODO: check
-      std::max(tensor.ndim(), shape.ndim()));
-}
+void ArrayFireBackend::tile(Tensor& out, const Tensor& tensor, const Shape& shape,
+    std::shared_ptr<const Stream> /* stream */) {
+  int outNdim = std::max(tensor.ndim(), shape.ndim());
 
-Tensor ArrayFireBackend::concatenate(
-    const std::vector<Tensor>& tensors,
-    const unsigned axis) {
-  af::array out;
-  switch (tensors.size()) {
-    case 0:
-      return toTensor<ArrayFireTensor>(ArrayFireTensor()); // empty tensor
-    case 1:
-      return tensors.front();
-    case 2:
-      out = af::join(axis, toArray(tensors[0]), toArray(tensors[1]));
-      break;
-    case 3:
-      out = af::join(
-          axis, toArray(tensors[0]), toArray(tensors[1]), toArray(tensors[2]));
-      break;
-    case 4:
-      out = af::join(
-          axis,
-          toArray(tensors[0]),
-          toArray(tensors[1]),
-          toArray(tensors[2]),
-          toArray(tensors[3]));
-      break;
-    default:
-      // TODO: iteratively concat to remove this limitation
-      throw std::invalid_argument(
-          "ArrayFire concatenate doesn't support > 4 tensors");
+  // Build AF tile counts aligned to outNdim resolution.
+  // FL dim i -> AF dim (outNdim-1-i).
+  af::dim4 afTile(1, 1, 1, 1);
+  for (int i = 0; i < shape.ndim(); ++i) {
+    afTile[outNdim - 1 - i] = shape.dim(i);
   }
 
+  // Right-align: shorter input gets 1s prepended in FL space. In AF (with full
+  // reversal), data stays at LOW AF dims. Since AF dim4 already has trailing
+  // 1s, no reshape is needed -- just ensure the tile counts align correctly.
+  auto arr = toArray(tensor);
+
+  out = toTensor<ArrayFireTensor>(af::tile(arr, afTile), outNdim);
+}
+
+void ArrayFireBackend::concatenate(
+    Tensor& out,
+    const std::vector<Tensor>& tensors,
+    const unsigned axis,
+    std::shared_ptr<const Stream> /* stream */) {
+  if (tensors.empty()) {
+    out = toTensor<ArrayFireTensor>(ArrayFireTensor()); // empty tensor
+    return;
+  }
+  if (tensors.size() == 1) {
+    out = tensors.front();
+    return;
+  }
+
+  // Compute effective ndim before axis conversion (axis may extend rank).
   unsigned numDims = tensors[0].ndim();
-  if (axis > std::max(numDims - 1, 0u)) {
+  if (axis >= numDims) {
     numDims = axis + 1;
+  }
+  unsigned afAxis = detail::flToAfAxis(axis, numDims);
+
+  // Helper: get an AF array promoted to the effective ndim. When the effective
+  // ndim is larger than the input ndim, reshape so data sits at the correct
+  // high AF dims (AF is col-major, FL is row-major).
+  auto getArr = [&](const Tensor& t) -> af::array {
+    auto arr = toArray(t);
+    // When rank extends (numDims > input ndim), the new axis is at
+    // AF position afAxis. Move data to high AF dims so the new axis
+    // at low AF position has size 1.
+    if (static_cast<int>(numDims) > t.ndim()) {
+      af::dim4 paddedDims(1, 1, 1, 1);
+      auto origDims = arr.dims();
+      int offset = static_cast<int>(numDims) - t.ndim();
+      for (int i = 0; i < t.ndim(); ++i) {
+        paddedDims[i + offset] = origDims[i];
+      }
+      arr = af::moddims(arr, paddedDims);
+    }
+    return arr;
+  };
+
+  // af::join supports at most 4 arrays at a time; handle larger inputs
+  // by iteratively joining in groups of 4.
+  af::array result = getArr(tensors[0]);
+  size_t i = 1;
+  while (i < tensors.size()) {
+    size_t remaining = tensors.size() - i;
+    if (remaining >= 3) {
+      result = af::join(
+          afAxis, result, getArr(tensors[i]), getArr(tensors[i + 1]),
+          getArr(tensors[i + 2]));
+      i += 3;
+    } else if (remaining == 2) {
+      result = af::join(
+          afAxis, result, getArr(tensors[i]), getArr(tensors[i + 1]));
+      i += 2;
+    } else {
+      result = af::join(afAxis, result, getArr(tensors[i]));
+      i += 1;
+    }
   }
 
   // All tensors have the same numdims else AF would throw
-  return toTensor<ArrayFireTensor>(std::move(out), numDims);
+  out = toTensor<ArrayFireTensor>(std::move(result), numDims);
 }
 
-Tensor ArrayFireBackend::nonzero(const Tensor& tensor) {
-  return toTensor<ArrayFireTensor>(
+void ArrayFireBackend::nonzero(Tensor& out, const Tensor& tensor,
+    std::shared_ptr<const Stream> /* stream */) {
+  out = toTensor<ArrayFireTensor>(
       af::where(toArray(tensor)), /* numDims = */ 1);
 }
 
-Tensor ArrayFireBackend::pad(
+void ArrayFireBackend::pad(
+    Tensor& out,
     const Tensor& input,
     const std::vector<std::pair<int, int>>& padWidths,
-    const PadType type) {
+    const PadType type,
+    std::shared_ptr<const Stream> /* stream */) {
   if (padWidths.size() > AF_MAX_DIMS) {
     throw std::invalid_argument(
         "ArrayFireBackend::pad - given padWidths for more than 4 dimensions");
   }
 
   // convert ((begin_1, end_1), ..., (begin_k, end_k)) to ((begin_1, ...,
-  // begin_k), (end_1, ..., end_k)) for ArrayFire
+  // begin_k), (end_1, ..., end_k)) for ArrayFire.
+  // FL dim i maps to AF dim (ndim-1-i), so reverse the padWidths order.
+  unsigned ndim = padWidths.size();
   af::dim4 beginPadding, endPadding;
   for (size_t i = 0; i < padWidths.size(); ++i) {
     auto& [first, second] = padWidths[i];
-    beginPadding[i] = first;
-    endPadding[i] = second;
+    beginPadding[ndim - 1 - i] = first;
+    endPadding[ndim - 1 - i] = second;
   }
 
-  return toTensor<ArrayFireTensor>(
+  out = toTensor<ArrayFireTensor>(
       af::pad(
           toArray(input),
           beginPadding,

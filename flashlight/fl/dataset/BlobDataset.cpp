@@ -182,7 +182,7 @@ Tensor BlobDataset::readArray(const BlobDatasetEntry& e, int i) const {
 
 void BlobDataset::writeArray(const BlobDatasetEntry& e, const Tensor& array) {
   std::vector<uint8_t> buffer(array.bytes());
-  array.host(buffer.data());
+  array.hostSync(buffer.data());
   writeData(e.offset, (char*)buffer.data(), buffer.size());
 }
 

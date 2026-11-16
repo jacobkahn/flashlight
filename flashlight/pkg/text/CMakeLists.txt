@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 add_library(fl_pkg_text)
 
 # Install lib and headers

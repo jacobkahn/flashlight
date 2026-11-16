@@ -23,11 +23,11 @@ using fl::Tensor;
 namespace {
 const fs::path kPath = fs::temp_directory_path() / "test.mdl";
 
-bool afEqual(const fl::Variable& a, const fl::Variable& b) {
-  if (a.isCalcGrad() != b.isCalcGrad()) {
+bool afEqual(const fl::Tensor& a, const fl::Tensor& b) {
+  if (a.requiresGrad() != b.requiresGrad()) {
     return false;
   }
-  return allClose(a.tensor(), b.tensor(), 1E-7);
+  return allClose(a, b, 1E-7);
 }
 
 } // namespace
@@ -60,7 +60,7 @@ TEST(RuntimeTest, LoadAndSave) {
   modelload.eval();
 
   for (int i = 0; i < 10; ++i) {
-    auto in = fl::Variable(fl::rand({10, 1, 4, 1}), i & 1);
+    auto in = fl::Tensor(fl::rand({10, 1, 4, 1}), i & 1);
     ASSERT_TRUE(afEqual(model.forward(in), modelload.forward(in)));
   }
 }

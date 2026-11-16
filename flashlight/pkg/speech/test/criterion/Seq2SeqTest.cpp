@@ -55,7 +55,7 @@ TEST(Seq2SeqTest, Seq2Seq) {
       fl::rand({outputsteps, batchsize}, fl::dtype::f32) * 0.99 * nclass;
   target = target.astype(fl::dtype::s32);
 
-  Variable output, attention;
+  Tensor output, attention;
   std::tie(output, attention) = seq2seq.vectorizedDecoder(
       noGrad(input), noGrad(target), Tensor(), Tensor());
 
@@ -73,7 +73,7 @@ TEST(Seq2SeqTest, Seq2Seq) {
 
   // Check that vecotrized decoder and sequential decoder give the same
   // results.
-  Variable outSeq, attentionSeq;
+  Tensor outSeq, attentionSeq;
   std::tie(outSeq, attentionSeq) =
       seq2seq.decoder(noGrad(input), noGrad(target), Tensor(), Tensor());
 
@@ -89,8 +89,8 @@ TEST(Seq2SeqTest, Seq2Seq) {
   seq2seq.eval();
   std::tie(outSeq, attentionSeq) =
       seq2seq.decoder(noGrad(input), noGrad(target), Tensor(), Tensor());
-  ASSERT_FALSE(outSeq.isCalcGrad());
-  ASSERT_FALSE(attentionSeq.isCalcGrad());
+  ASSERT_FALSE(outSeq.requiresGrad());
+  ASSERT_FALSE(attentionSeq.requiresGrad());
 }
 
 TEST(Seq2SeqTest, Seq2SeqViterbi) {
@@ -137,7 +137,7 @@ TEST(Seq2SeqTest, Seq2SeqBeamSearchViterbi) {
   auto beampath = seq2seq.beamPath(input, Tensor(), 1);
   ASSERT_EQ(beampath.size(), viterbipath.elements());
   for (int idx = 0; idx < beampath.size(); idx++) {
-    ASSERT_EQ(beampath[idx], viterbipath(idx).scalar<int>());
+    ASSERT_EQ(beampath[idx], viterbipath(idx).scalarSync<int>());
   }
 }
 
@@ -163,7 +163,7 @@ TEST(Seq2SeqTest, Seq2SeqMedianWindow) {
   auto beampath = seq2seq.beamPath(input, Tensor(), 1);
   ASSERT_EQ(beampath.size(), viterbipath.elements());
   for (int idx = 0; idx < beampath.size(); idx++) {
-    ASSERT_EQ(beampath[idx], viterbipath(idx).scalar<int>());
+    ASSERT_EQ(beampath[idx], viterbipath(idx).scalarSync<int>());
   }
 }
 
@@ -189,7 +189,7 @@ TEST(Seq2SeqTest, Seq2SeqStepWindow) {
   auto beampath = seq2seq.beamPath(input, Tensor(), 1);
   ASSERT_EQ(beampath.size(), viterbipath.elements());
   for (int idx = 0; idx < beampath.size(); idx++) {
-    ASSERT_EQ(beampath[idx], viterbipath(idx).scalar<int>());
+    ASSERT_EQ(beampath[idx], viterbipath(idx).scalarSync<int>());
   }
 }
 
@@ -216,7 +216,7 @@ TEST(Seq2SeqTest, Seq2SeqStepWindowVectorized) {
       fl::rand({outputsteps, batchsize}, fl::dtype::f32) * 0.99 * nclass;
   target = target.astype(fl::dtype::s32);
 
-  Variable outputV, attentionV, outputS, attentionS;
+  Tensor outputV, attentionV, outputS, attentionS;
   std::tie(outputV, attentionV) = seq2seq.vectorizedDecoder(
       noGrad(input), noGrad(target), Tensor(), Tensor());
 
@@ -243,7 +243,7 @@ TEST(Seq2SeqTest, Seq2SeqAttn) {
   auto target = noGrad(
       (fl::rand({U, B}, fl::dtype::f32) * 0.99 * N).astype(fl::dtype::s32));
 
-  Variable output, attention;
+  Tensor output, attention;
   std::tie(output, attention) =
       seq2seq.decoder(input, target, Tensor(), Tensor());
   // check padding works
@@ -275,7 +275,7 @@ TEST(Seq2SeqTest, Seq2SeqMixedAttn) {
   auto target = noGrad(
       (fl::rand({U, B}, fl::dtype::f32) * 0.99 * N).astype(fl::dtype::s32));
 
-  Variable output, attention;
+  Tensor output, attention;
   std::tie(output, attention) =
       seq2seq.decoder(input, target, Tensor(), Tensor());
   ASSERT_EQ(attention.shape(), Shape({U * nHead, T, B}));
@@ -317,7 +317,7 @@ TEST(Seq2SeqTest, Serialization) {
   auto target = noGrad(
       (fl::rand({U, B}, fl::dtype::f32) * 0.99 * N).astype(fl::dtype::s32));
 
-  Variable output, attention;
+  Tensor output, attention;
   std::tie(output, attention) =
       seq2seq->decoder(input, target, Tensor(), Tensor());
 
@@ -327,7 +327,7 @@ TEST(Seq2SeqTest, Serialization) {
   load(path, loaded);
   loaded->eval();
 
-  Variable outputl, attentionl;
+  Tensor outputl, attentionl;
   std::tie(outputl, attentionl) =
       loaded->decoder(input, target, Tensor(), Tensor());
 
@@ -382,7 +382,7 @@ TEST(Seq2SeqTest, BatchedDecoderStep) {
 
   for (auto& seq2seq : criterions) {
     seq2seq.eval();
-    std::vector<Variable> ys;
+    std::vector<Tensor> ys;
     std::vector<Seq2SeqState> inStates(B, Seq2SeqState(nAttnRound));
     std::vector<Seq2SeqState*> inStatePtrs(B);
 
@@ -391,7 +391,7 @@ TEST(Seq2SeqTest, BatchedDecoderStep) {
     std::vector<std::vector<float>> batched_scores;
 
     for (int i = 0; i < B; i++) {
-      Variable y = constant(i % N, {1}, fl::dtype::s32, false);
+      Tensor y = constant(i % N, {1}, fl::dtype::s32, false);
       ys.push_back(y);
 
       inStates[i].alpha = noGrad(fl::randn({1, T, 1}, fl::dtype::f32));
@@ -404,11 +404,11 @@ TEST(Seq2SeqTest, BatchedDecoderStep) {
 
       // Single forward
       Seq2SeqState outstate(nAttnRound);
-      Variable ox;
+      Tensor ox;
       std::tie(ox, outstate) = seq2seq.decodeStep(
           input, y, inStates[i], Tensor(), Tensor(), input.dim(1));
       ox = logSoftmax(ox, 0);
-      single_scores[i] = ox.tensor().toHostVector<float>();
+      single_scores[i] = ox.toHostVectorSync<float>();
     }
 
     // Batched forward
@@ -449,7 +449,7 @@ TEST(Seq2SeqTest, Seq2SeqSampling) {
         ss);
     seq2seq.train();
 
-    Variable output, attention;
+    Tensor output, attention;
     std::tie(output, attention) =
         seq2seq.decoder(input, target, Tensor(), Tensor());
     ASSERT_EQ(attention.shape(), Shape({U, T, B}));
@@ -471,7 +471,7 @@ TEST(Seq2SeqTest, Seq2SeqSampling) {
       kRandSampling);
   seq2seq1.train();
 
-  Variable output, attention;
+  Tensor output, attention;
   std::tie(output, attention) =
       seq2seq1.vectorizedDecoder(input, target, Tensor(), Tensor());
   ASSERT_EQ(attention.shape(), Shape({U, T, B}));

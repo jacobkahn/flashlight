@@ -31,7 +31,27 @@ class FL_API Container : public Module {
   // from param index -> {module index, module param index}
   std::unordered_map<int, std::tuple<int, int>> childParamIdx_;
 
-  FL_SAVE_LOAD_WITH_BASE(Module, modules_, childParamIdx_)
+  friend class cereal::access;
+  template <class Archive>
+  void save(Archive& ar, const uint32_t version) const {
+    ::fl::detail::applyArchive(
+        ar, version, cereal::base_class<Module>(this), modules_,
+        childParamIdx_);
+  }
+  template <class Archive>
+  void load(Archive& ar, const uint32_t version) {
+    ::fl::detail::applyArchive(
+        ar, version, cereal::base_class<Module>(this), modules_,
+        childParamIdx_);
+    // Rebuild params_ from child modules so they share autogradMeta_.
+    // Without this, Container's params_ and child module params are separate
+    // Tensor objects after deserialization, causing gradient accumulation
+    // to only affect the child module's copy.
+    for (auto& [pidx, mapping] : childParamIdx_) {
+      auto [midx, mPidx] = mapping;
+      params_[pidx] = modules_[midx]->param(mPidx);
+    }
+  }
 
  protected:
   /**
@@ -154,11 +174,11 @@ class FL_API Container : public Module {
    * ``params_.size() - 1``), then an error will be thrown. A new parameter
    * will not be created at a specified index if out of bounds.
    *
-   * @param var the new replacement `Variable`
+   * @param var the new replacement `Tensor`
    * @param position The index of the parameter which will be replaced in
    * `params_`
    */
-  void setParams(const Variable& var, int position) override;
+  void setParams(const Tensor& var, int position) override;
 
   /**
    * Generates a stringified representation of the module.
@@ -241,14 +261,14 @@ class FL_API Sequential : public Container {
    *
    * @param input the value on which the `Container` will perform forward
    * computation.
-   * @return a `Variable` tensor containing the result of the forward
+   * @return a `Tensor` tensor containing the result of the forward
    * computation
    */
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
-  Variable forward(const Variable& input);
+  Tensor forward(const Tensor& input);
 
-  Variable operator()(const Variable& input);
+  Tensor operator()(const Tensor& input);
 
   /**
    * Generates a stringified representation of the `Sequential` by concatenating

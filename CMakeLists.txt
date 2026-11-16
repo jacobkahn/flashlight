@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.24)
 
 project(flashlight LANGUAGES CXX C VERSION 0.4.0)
 
@@ -12,15 +12,17 @@ if(CCACHE_PROGRAM)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# The CUDA standard is still C++14 to enable interopability with
-# slightly older and still well-supported versions of CUDA/nvcc
-# (e.g. CUDA < 11). This will be bumped to 17 once CUDA 11 is
-# required.
-set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Default CUDA architectures - use 'native' to detect at build time,
+# or set explicitly via -DCMAKE_CUDA_ARCHITECTURES="80;90"
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
 
 # Default directories for installation
 set(FL_INSTALL_INC_DIR "include" CACHE PATH "Install path for headers")
@@ -88,10 +90,9 @@ set(FL_ROOT_DIR ${PROJECT_SOURCE_DIR}/flashlight)
 set(FL_BUILD_BINARY_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/bin")
 
 # ]--- Backend Options
-# TODO: change these to FL_BACKEND_* to be consistent with preproc
 option(FL_USE_CUDA   "Build CUDA support for Flashlight backends" OFF)
-option(FL_USE_CPU    "Build CPU support for Flashlight backends"  OFF)
-option(FL_USE_OPENCL "Build OpenCL support for Flashlight backends" OFF)
+# FL_USE_CPU is declared with the tensor backend options
+# (flashlight/fl/tensor/CMakeLists.txt).
 option(FL_USE_MKL    "Build MKL support for Flashlight backends" OFF)
 
 # --------------------------- Core ---------------------------

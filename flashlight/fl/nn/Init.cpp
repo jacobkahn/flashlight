@@ -67,7 +67,7 @@ Tensor glorotNormal(
 }
 
 Tensor erfinv(const Tensor& y) {
-  if (fl::any(fl::abs(y) >= 1.).scalar<char>()) {
+  if (fl::any(fl::abs(y) >= 1.).scalarSync<char>()) {
     throw std::runtime_error("[erfinv] input is out of range (-1, 1)");
   }
   double a[4] = {0.886226899, -1.645349621, 0.914624893, -0.140543331};
@@ -103,19 +103,19 @@ Tensor erfinv(const Tensor& y) {
 
 } // namespace detail
 
-Variable input(const Tensor& arr) {
-  return Variable(arr, false);
+Tensor input(const Tensor& arr) {
+  return Tensor(arr, false);
 }
 
-Variable noGrad(const Tensor& arr) {
-  return Variable(arr, false);
+Tensor noGrad(const Tensor& arr) {
+  return Tensor(arr, false);
 }
 
-Variable param(const Tensor& arr) {
-  return Variable(arr, true);
+Tensor param(const Tensor& arr) {
+  return Tensor(arr, true);
 }
 
-Variable constant(
+Tensor constant(
     double val,
     int outputSize,
     int inputSize,
@@ -124,12 +124,12 @@ Variable constant(
   return constant(val, Shape({outputSize, inputSize}), type, calcGrad);
 }
 
-Variable
+Tensor
 constant(double val, const Shape& dims, fl::dtype type, bool calcGrad) {
-  return Variable(fl::full(dims, val, type), calcGrad);
+  return Tensor(fl::full(dims, val, type), calcGrad);
 }
 
-Variable
+Tensor
 identity(int outputSize, int inputSize, fl::dtype type, bool calcGrad) {
   // TODO{fl::Tensor}{fixme} add non-square identity to API
   if (inputSize != outputSize) {
@@ -141,11 +141,11 @@ identity(int outputSize, int inputSize, fl::dtype type, bool calcGrad) {
   return identity(Shape({inputSize, outputSize}), type, calcGrad);
 }
 
-Variable identity(const Shape& dims, fl::dtype type, bool calcGrad) {
-  return Variable(fl::identity(dims.dim(0), type), calcGrad);
+Tensor identity(const Shape& dims, fl::dtype type, bool calcGrad) {
+  return Tensor(fl::identity(dims.dim(0), type), calcGrad);
 }
 
-Variable uniform(
+Tensor uniform(
     int outputSize,
     int inputSize,
     double min,
@@ -155,16 +155,16 @@ Variable uniform(
   return uniform(Shape({outputSize, inputSize}), min, max, type, calcGrad);
 }
 
-Variable uniform(
+Tensor uniform(
     const Shape& dims,
     double min,
     double max,
     fl::dtype type,
     bool calcGrad) {
-  return Variable(detail::uniform(dims, min, max, type), calcGrad);
+  return Tensor(detail::uniform(dims, min, max, type), calcGrad);
 }
 
-Variable normal(
+Tensor normal(
     int outputSize,
     int inputSize,
     double stdv,
@@ -174,50 +174,50 @@ Variable normal(
   return normal(Shape({outputSize, inputSize}), stdv, mean, type, calcGrad);
 }
 
-Variable normal(
+Tensor normal(
     const Shape& dims,
     double stdv,
     double mean,
     fl::dtype type,
     bool calcGrad) {
-  return Variable(detail::normal(dims, stdv, mean, type), calcGrad);
+  return Tensor(detail::normal(dims, stdv, mean, type), calcGrad);
 }
 
-Variable kaimingUniform(
+Tensor kaimingUniform(
     const Shape& shape,
     int fanIn,
     fl::dtype type /* = fl::dtype::f32 */,
     bool calcGrad /* = true */) {
-  return Variable(detail::kaimingUniform(shape, fanIn, type), calcGrad);
+  return Tensor(detail::kaimingUniform(shape, fanIn, type), calcGrad);
 }
 
-Variable kaimingNormal(
+Tensor kaimingNormal(
     const Shape& shape,
     int fanIn,
     fl::dtype type /* = fl::dtype::f32 */,
     bool calcGrad /* = true */) {
-  return Variable(detail::kaimingNormal(shape, fanIn, type), calcGrad);
+  return Tensor(detail::kaimingNormal(shape, fanIn, type), calcGrad);
 }
 
-Variable glorotUniform(
-    const Shape& shape,
-    int fanIn,
-    int fanOut,
-    fl::dtype type /* = fl::dtype::f32 */,
-    bool calcGrad /* = true */) {
-  return Variable(detail::glorotUniform(shape, fanIn, fanOut, type), calcGrad);
-}
-
-Variable glorotNormal(
+Tensor glorotUniform(
     const Shape& shape,
     int fanIn,
     int fanOut,
     fl::dtype type /* = fl::dtype::f32 */,
     bool calcGrad /* = true */) {
-  return Variable(detail::glorotNormal(shape, fanIn, fanOut, type), calcGrad);
+  return Tensor(detail::glorotUniform(shape, fanIn, fanOut, type), calcGrad);
 }
 
-Variable truncNormal(
+Tensor glorotNormal(
+    const Shape& shape,
+    int fanIn,
+    int fanOut,
+    fl::dtype type /* = fl::dtype::f32 */,
+    bool calcGrad /* = true */) {
+  return Tensor(detail::glorotNormal(shape, fanIn, fanOut, type), calcGrad);
+}
+
+Tensor truncNormal(
     const Shape& shape,
     double stdv,
     double mean,
@@ -239,7 +239,7 @@ Variable truncNormal(
   result = detail::erfinv(result);
   result = mean + result * (stdv * std::sqrt(2.));
   result = fl::clip(result, minCufOff, maxCutOff);
-  return Variable(result, calcGrad);
+  return Tensor(result, calcGrad);
 }
 
 } // namespace fl

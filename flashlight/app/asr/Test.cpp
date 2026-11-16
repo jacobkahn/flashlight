@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
     meters.timer.resume();
     int cnt = 0;
     for (auto& sample : *localDs) {
-      fl::Variable rawEmission;
+      fl::Tensor rawEmission;
       if (usePlugin) {
         rawEmission = localNetwork
                           ->forward(
@@ -305,9 +305,9 @@ int main(int argc, char** argv) {
         rawEmission = fl::pkg::runtime::forwardSequentialModuleWithPadMask(
             fl::input(sample[kInputIdx]), localNetwork, sample[kDurationIdx]);
       }
-      auto emission = rawEmission.tensor().toHostVector<float>();
-      auto tokenTarget = sample[kTargetIdx].toHostVector<int>();
-      auto wordTarget = sample[kWordIdx].toHostVector<int>();
+      auto emission = rawEmission.toHostVectorSync<float>();
+      auto tokenTarget = sample[kTargetIdx].toHostVectorSync<int>();
+      auto wordTarget = sample[kWordIdx].toHostVectorSync<int>();
       auto sampleId = readSampleIds(sample[kSampleIdx]).front();
 
       auto letterTarget = tknTarget2Ltr(
@@ -328,7 +328,7 @@ int main(int argc, char** argv) {
 
       // Tokens
       auto tokenPrediction =
-          localCriterion->viterbiPath(rawEmission.tensor()).toHostVector<int>();
+          localCriterion->viterbiPath(rawEmission).toHostVectorSync<int>();
       auto letterPrediction = tknPrediction2Ltr(
           tokenPrediction,
           tokenDict,

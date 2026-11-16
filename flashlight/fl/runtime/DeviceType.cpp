@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/runtime/DeviceType.h"
 
+#include <stdexcept>
+
 namespace fl {
 
 std::string deviceTypeToString(const DeviceType type) {
@@ -14,6 +16,7 @@ std::string deviceTypeToString(const DeviceType type) {
     case DeviceType::x64: return "x64";
     case DeviceType::CUDA: return "CUDA";
   }
+  throw std::invalid_argument("Unknown DeviceType");
 }
 
 std::ostream& operator<<(std::ostream& os, const DeviceType& type) {

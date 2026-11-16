@@ -86,8 +86,8 @@ ResNetBottleneckBlock::ResNetBottleneckBlock(
   }
 }
 
-std::vector<fl::Variable> ResNetBottleneckBlock::forward(
-    const std::vector<fl::Variable>& inputs) {
+std::vector<fl::Tensor> ResNetBottleneckBlock::forward(
+    const std::vector<fl::Tensor>& inputs) {
   const auto& c1 = module(0);
   const auto& bn1 = module(1);
   const auto& relu1 = module(2);
@@ -98,7 +98,7 @@ std::vector<fl::Variable> ResNetBottleneckBlock::forward(
   const auto& bn3 = module(7);
   const auto& relu3 = module(8);
 
-  std::vector<fl::Variable> out;
+  std::vector<fl::Tensor> out;
   out = c1->forward(inputs);
   out = bn1->forward(out);
 
@@ -111,7 +111,7 @@ std::vector<fl::Variable> ResNetBottleneckBlock::forward(
   out = c3->forward(out);
   out = bn3->forward(out);
 
-  std::vector<fl::Variable> shortcut;
+  std::vector<fl::Tensor> shortcut;
   if (modules().size() > 9) {
     shortcut = module(9)->forward(inputs);
   } else {
@@ -127,22 +127,22 @@ std::string ResNetBottleneckBlock::prettyString() const {
   return ss.str();
 }
 
-std::vector<fl::Variable> ResNetBlock::forward(
-    const std::vector<fl::Variable>& inputs) {
+std::vector<fl::Tensor> ResNetBlock::forward(
+    const std::vector<fl::Tensor>& inputs) {
   const auto& c1 = module(0);
   const auto& bn1 = module(1);
   const auto& relu1 = module(2);
   const auto& c2 = module(3);
   const auto& bn2 = module(4);
   const auto& relu2 = module(5);
-  std::vector<fl::Variable> out;
+  std::vector<fl::Tensor> out;
   out = c1->forward(inputs);
   out = bn1->forward(out);
   out = relu1->forward(out);
   out = c2->forward(out);
   out = bn2->forward(out);
 
-  std::vector<fl::Variable> shortcut;
+  std::vector<fl::Tensor> shortcut;
   if (modules().size() > 6) {
     shortcut = module(6)->forward(inputs);
   } else {

@@ -25,16 +25,16 @@ int main() {
 
   auto asg = AutoSegmentationCriterion(N);
 
-  auto input = Variable(fl::rand({N, T, B}) * 2 - 1, true);
+  auto input = Tensor(fl::rand({N, T, B}) * 2 - 1, true);
 
-  auto target = Variable(
+  auto target = Tensor(
       fl::abs(fl::rand({L, B}, fl::dtype::s32)).astype(fl::dtype::s32) %
           (N - 1),
       false);
 
   int ntimes = 50;
-  Variable b = asg.forward({input, target}).front();
-  Variable gradoutput = Variable(fl::rand(b.shape()) * 2 - 2, false);
+  Tensor b = asg.forward({input, target}).front();
+  Tensor gradoutput = Tensor(fl::rand(b.shape()) * 2 - 2, false);
   for (int i = 0; i < 5; ++i) {
     b = asg.forward({input, target}).front();
     b.backward();

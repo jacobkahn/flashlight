@@ -11,7 +11,7 @@
 #include <string>
 
 #include "flashlight/fl/tensor/Index.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl::pkg::speech {
 
@@ -29,9 +29,9 @@ GetConvLmScoreFunc buildGetConvLmScoreFunction(
           ") or batch size (" + std::to_string(batchSize) + ").");
     }
     Tensor inputData = Tensor::fromVector({sampleSize, batchSize}, inputs);
-    fl::Variable output = network->forward({fl::input(inputData)})[0];
+    fl::Tensor output = network->forward({fl::input(inputData)})[0];
 
-    if (fl::countNonzero(fl::isnan(output.tensor())).asScalar<int>() != 0) {
+    if (fl::countNonzero(fl::isnan(output)).asScalar<int>() != 0) {
       throw std::runtime_error("[ConvLM] Encountered NaNs in propagation");
     }
     int32_t C = output.dim(0), T = output.dim(1), B = output.dim(2);
@@ -56,9 +56,9 @@ GetConvLmScoreFunc buildGetConvLmScoreFunction(
     globalIndices = globalIndices +
         fl::tile(Tensor::fromVector({1, B}, lastTokenPositions), {C, 1}) * C;
     Tensor preds =
-        fl::reshape(output.tensor().flatten()(globalIndices.flatten()), {C, B});
+        fl::reshape(output.flatten()(globalIndices.flatten()), {C, B});
     // vector of B X C predictions
-    return preds.toHostVector<float>();
+    return preds.toHostVectorSync<float>();
   };
 
   return getConvLmScoreFunc;

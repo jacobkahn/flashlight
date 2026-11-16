@@ -18,8 +18,8 @@ class StepWindow : public WindowBase {
   StepWindow();
   StepWindow(int sMin, int sMax, double vMin, double vMax);
 
-  Variable computeWindow(
-      const Variable& prevAttn,
+  Tensor computeWindow(
+      const Tensor& prevAttn,
       int step,
       int targetLen,
       int inputSteps,
@@ -27,7 +27,7 @@ class StepWindow : public WindowBase {
       const Tensor& inputSizes = Tensor(),
       const Tensor& targetSizes = Tensor()) const override;
 
-  Variable computeVectorizedWindow(
+  Tensor computeVectorizedWindow(
       int targetLen,
       int inputSteps,
       int batchSize,
@@ -40,7 +40,7 @@ class StepWindow : public WindowBase {
   double vMin_;
   double vMax_;
 
-  Variable compute(
+  Tensor compute(
       int targetLen,
       int inputSteps,
       int batchSize,

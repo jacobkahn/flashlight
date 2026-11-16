@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/tensor/backend/af/ArrayFireBackend.h"
 
+#include "flashlight/fl/tensor/BackendRegistry.h"
+
 #include <af/algorithm.h>
 #include <af/backend.h>
 #include <af/data.h>
@@ -33,6 +35,8 @@
 #endif
 
 namespace fl {
+
+FL_REGISTER_TENSOR_BACKEND(ArrayFire, ArrayFireBackend::getInstance);
 
 namespace {
 
@@ -123,6 +127,12 @@ TensorBackendType ArrayFireBackend::backendType() const {
   return TensorBackendType::ArrayFire;
 }
 
+std::shared_ptr<Stream> ArrayFireBackend::jitStream() const {
+  const auto afId = af::getDevice();
+  getOrWrapAfDeviceStream(afId, idToNativeId_.at(afId), *afIdToStream_);
+  return std::const_pointer_cast<Stream>(afIdToStream_->at(afId));
+}
+
 /* -------------------------- Compute Functions -------------------------- */
 
 void ArrayFireBackend::eval(const Tensor& tensor) {
@@ -145,9 +155,13 @@ bool ArrayFireBackend::supportsDataType(const fl::dtype& dtype) const {
   switch (dtype) {
     case fl::dtype::f16:
       return af::isHalfAvailable(af::getDevice()) &&
-          // f16 isn't [yet] supported with the CPU backend per onednn
-          // limitations
-          !FL_BACKEND_CPU;
+          // f16 isn't [yet] supported with ArrayFire's CPU backend per onednn
+          // limitations. (Not FL_BACKEND_CPU: that is set whenever the native
+          // CPU backend is built, including AF-CUDA builds.)
+          !FL_ARRAYFIRE_USE_CPU;
+    case fl::dtype::bf16:
+      // ArrayFire has no bf16 support
+      return false;
     default:
       return true;
   }
@@ -203,13 +217,15 @@ void ArrayFireBackend::setSeed(const int seed) {
   af::setSeed(seed);
 }
 
-Tensor ArrayFireBackend::randn(const Shape& shape, dtype type) {
+Tensor ArrayFireBackend::randn(const Shape& shape, dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
   return toTensor<ArrayFireTensor>(
       af::randn(detail::flToAfDims(shape), detail::flToAfType(type)),
       shape.ndim());
 }
 
-Tensor ArrayFireBackend::rand(const Shape& shape, dtype type) {
+Tensor ArrayFireBackend::rand(const Shape& shape, dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
   return toTensor<ArrayFireTensor>(
       af::randu(detail::flToAfDims(shape), detail::flToAfType(type)),
       shape.ndim());
@@ -218,34 +234,30 @@ Tensor ArrayFireBackend::rand(const Shape& shape, dtype type) {
 /* --------------------------- Tensor Operators --------------------------- */
 
 /******************** Tensor Creation Functions ********************/
-#define AF_BACKEND_CREATE_FUN_LITERAL_DEF(TYPE)                          \
-  Tensor ArrayFireBackend::fromScalar(TYPE value, const dtype type) {    \
-    return toTensor<ArrayFireTensor>(                                    \
-        af::constant(value, af::dim4(1), detail::flToAfType(type)),      \
-        /* ndim = */ 0);                                                 \
-  }                                                                      \
-  Tensor ArrayFireBackend::full(                                         \
-      const Shape& shape, TYPE value, const dtype type) {                \
-    return toTensor<ArrayFireTensor>(                                    \
-        af::constant(                                                    \
-            value, detail::flToAfDims(shape), detail::flToAfType(type)), \
-        shape.ndim());                                                   \
-  }
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const double&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const float&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const int&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const char&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned char&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const long&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned long&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const long long&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned long long&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const bool&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const short&);
-AF_BACKEND_CREATE_FUN_LITERAL_DEF(const unsigned short&);
+Tensor ArrayFireBackend::fromScalar(double value, const dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
+  return toTensor<ArrayFireTensor>(
+      af::constant(value, af::dim4(1), detail::flToAfType(type)), 0);
+}
 
-Tensor ArrayFireBackend::identity(const Dim dim, const dtype type) {
+Tensor ArrayFireBackend::full(
+    const Shape& shape, double value, const dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
+  return toTensor<ArrayFireTensor>(
+      af::constant(value, detail::flToAfDims(shape), detail::flToAfType(type)),
+      shape.ndim());
+}
+
+Tensor ArrayFireBackend::empty(
+    const Shape& shape, dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
+  return toTensor<ArrayFireTensor>(
+      af::array(detail::flToAfDims(shape), detail::flToAfType(type)),
+      shape.ndim());
+}
+
+Tensor ArrayFireBackend::identity(const Dim dim, const dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
   return toTensor<ArrayFireTensor>(
       af::identity({dim, dim}, detail::flToAfType(type)), /* numDims = */ 2);
 }
@@ -253,31 +265,45 @@ Tensor ArrayFireBackend::identity(const Dim dim, const dtype type) {
 Tensor ArrayFireBackend::arange(
     const Shape& shape,
     const Dim seqDim,
-    const dtype type) {
+    const dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
+  int afSeqDim = detail::flToAfAxis(seqDim, shape.ndim());
   return toTensor<ArrayFireTensor>(
-      af::range(detail::flToAfDims(shape), seqDim, detail::flToAfType(type)),
+      af::range(detail::flToAfDims(shape), afSeqDim, detail::flToAfType(type)),
       shape.ndim());
 }
 
 Tensor ArrayFireBackend::iota(
     const Shape& dims,
     const Shape& tileDims,
-    const dtype type) {
+    const dtype type,
+    std::shared_ptr<const Stream> /* stream */) {
+  int outNdim = std::max(dims.ndim(), tileDims.ndim());
+
+  // Both dims and tileDims must be aligned to the same outNdim resolution.
+  // FL dim i -> AF dim (outNdim-1-i).
+  af::dim4 afDims(1, 1, 1, 1);
+  for (int i = 0; i < dims.ndim(); ++i) {
+    afDims[outNdim - 1 - i] = dims.dim(i);
+  }
+  af::dim4 afTileDims(1, 1, 1, 1);
+  for (int i = 0; i < tileDims.ndim(); ++i) {
+    afTileDims[outNdim - 1 - i] = tileDims.dim(i);
+  }
+
   return toTensor<ArrayFireTensor>(
-      af::iota(
-          detail::flToAfDims(dims),
-          detail::flToAfDims(tileDims),
-          detail::flToAfType(type)),
-      /* numDims = */ std::max(dims.ndim(), tileDims.ndim()));
+      af::iota(afDims, afTileDims, detail::flToAfType(type)), outNdim);
 }
 
-Tensor ArrayFireBackend::where(
+void ArrayFireBackend::where(
+    Tensor& out,
     const Tensor& condition,
     const Tensor& x,
-    const Tensor& y) {
+    const Tensor& y,
+    std::shared_ptr<const Stream> /* stream */) {
   Tensor orig = x;
   af::replace(toArray(orig), toArray(condition), toArray(y));
-  return orig;
+  out = orig;
 }
 
 void ArrayFireBackend::topk(
@@ -286,10 +312,13 @@ void ArrayFireBackend::topk(
     const Tensor& input,
     const unsigned k,
     const Dim axis,
-    const SortMode sortMode) {
-  if (axis != 0) {
+    const SortMode sortMode,
+    std::shared_ptr<const Stream> /* stream */) {
+  int afAxis = detail::flToAfAxis(axis, input.ndim());
+  if (afAxis != 0) {
     throw std::invalid_argument(
-        "ArrayFireTensor topk: operation only supported along zero axis.");
+        "ArrayFireTensor topk: operation only supported along the innermost "
+        "axis (AF axis 0).");
   }
   af::array valuesArr, indicesArr;
   af::topk(
@@ -297,27 +326,30 @@ void ArrayFireBackend::topk(
       indicesArr,
       toArray(input),
       k,
-      axis,
+      afAxis,
       detail::flToAfTopKSortMode(sortMode));
 
   values = toTensor<ArrayFireTensor>(std::move(valuesArr), input.ndim());
   indices = toTensor<ArrayFireTensor>(std::move(indicesArr), input.ndim());
 }
 
-Tensor ArrayFireBackend::sort(
+void ArrayFireBackend::sort(
+    Tensor& out,
     const Tensor& input,
     const Dim axis,
-    const SortMode sortMode) {
+    const SortMode sortMode,
+    std::shared_ptr<const Stream> /* stream */) {
   if (sortMode != SortMode::Descending && sortMode != SortMode::Ascending) {
     throw std::invalid_argument(
         "Cannot sort ArrayFire tensor with given SortMode: "
         "only Descending and Ascending supported.");
   }
 
+  unsigned afAxis = detail::flToAfAxis(axis, input.ndim());
   af::array values, indices;
   af::sort(
-      values, indices, toArray(input), axis, sortMode == SortMode::Ascending);
-  return toTensor<ArrayFireTensor>(std::move(values), input.ndim());
+      values, indices, toArray(input), afAxis, sortMode == SortMode::Ascending);
+  out = toTensor<ArrayFireTensor>(std::move(values), input.ndim());
 }
 
 void ArrayFireBackend::sort(
@@ -325,34 +357,47 @@ void ArrayFireBackend::sort(
     Tensor& indices,
     const Tensor& input,
     const Dim axis,
-    const SortMode sortMode) {
+    const SortMode sortMode,
+    std::shared_ptr<const Stream> /* stream */) {
   if (sortMode != SortMode::Descending && sortMode != SortMode::Ascending) {
     throw std::invalid_argument(
         "Cannot sort ArrayFire tensor with given SortMode: "
         "only Descending and Ascending supported.");
   }
 
+  unsigned afAxis = detail::flToAfAxis(axis, input.ndim());
   af::array _values, _indices;
   af::sort(
-      _values, _indices, toArray(input), axis, sortMode == SortMode::Ascending);
+      _values, _indices, toArray(input), afAxis, sortMode == SortMode::Ascending);
   values = toTensor<ArrayFireTensor>(std::move(_values), input.ndim());
   indices = toTensor<ArrayFireTensor>(std::move(_indices), input.ndim());
 }
 
-Tensor ArrayFireBackend::argsort(
+void ArrayFireBackend::argsort(
+    Tensor& out,
     const Tensor& input,
     const Dim axis,
-    const SortMode sortMode) {
+    const SortMode sortMode,
+    std::shared_ptr<const Stream> /* stream */) {
   if (sortMode != SortMode::Descending && sortMode != SortMode::Ascending) {
     throw std::invalid_argument(
         "Cannot sort ArrayFire tensor with given SortMode: "
         "only Descending and Ascending supported.");
   }
 
+  unsigned afAxis = detail::flToAfAxis(axis, input.ndim());
   af::array values, indices;
   af::sort(
-      values, indices, toArray(input), axis, sortMode == SortMode::Ascending);
-  return toTensor<ArrayFireTensor>(std::move(indices), input.ndim());
+      values, indices, toArray(input), afAxis, sortMode == SortMode::Ascending);
+  out = toTensor<ArrayFireTensor>(std::move(indices), input.ndim());
+}
+
+void ArrayFireBackend::copy(
+    Tensor& dst, const Tensor& src, const Stream& /* stream */) {
+  if (dst.isEmpty()) {
+    dst = empty(src.shape(), src.type());
+  }
+  toArray(dst) = toArray(src).copy();
 }
 
 void ArrayFireBackend::print(const Tensor& tensor) {

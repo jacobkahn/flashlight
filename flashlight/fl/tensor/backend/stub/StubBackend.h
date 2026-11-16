@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "flashlight/fl/tensor/TensorBackend.h"
 
 namespace fl {
@@ -43,214 +45,264 @@ class StubBackend : public TensorBackend {
 
   /* -------------------------- Rand Functions -------------------------- */
   void setSeed(const int seed) override;
-  Tensor randn(const Shape& shape, dtype type) override;
-  Tensor rand(const Shape& shape, dtype type) override;
+  Tensor randn(const Shape& shape, dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor rand(const Shape& shape, dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
   /* --------------------------- Tensor Operators --------------------------- */
   /******************** Tensor Creation Functions ********************/
-#define FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(TYPE)       \
-  Tensor fromScalar(TYPE value, const dtype type) override; \
-  Tensor full(const Shape& dims, TYPE value, const dtype type) override;
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const double&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const float&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const int&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const unsigned&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const char&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const unsigned char&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const long&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const unsigned long&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const long long&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const unsigned long long&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const bool&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const short&);
-  FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL(const unsigned short&);
-#undef FL_STUB_BACKEND_CREATE_FUN_LITERAL_DECL
+  Tensor fromScalar(double value, dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor full(const Shape& dims, double value, dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor empty(const Shape& shape, dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
-  Tensor identity(const Dim dim, const dtype type) override;
-  Tensor arange(const Shape& shape, const Dim seqDim, const dtype type)
-      override;
-  Tensor iota(const Shape& dims, const Shape& tileDims, const dtype type)
-      override;
+  Tensor identity(const Dim dim, const dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor arange(const Shape& shape, const Dim seqDim, const dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor iota(const Shape& dims, const Shape& tileDims, const dtype type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
   /************************ Shaping and Indexing *************************/
-  Tensor reshape(const Tensor& tensor, const Shape& shape) override;
-  Tensor transpose(const Tensor& tensor, const Shape& axes /* = {} */) override;
-  Tensor tile(const Tensor& tensor, const Shape& shape) override;
-  Tensor concatenate(const std::vector<Tensor>& tensors, const unsigned axis)
-      override;
-  Tensor nonzero(const Tensor& tensor) override;
-  Tensor pad(
+  void reshape(Tensor& out, const Tensor& tensor, const Shape& shape,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void transpose(Tensor& out, const Tensor& tensor, const Shape& axes /* = {} */,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void tile(Tensor& out, const Tensor& tensor, const Shape& shape,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void concatenate(Tensor& out, const std::vector<Tensor>& tensors,
+      const unsigned axis,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void nonzero(Tensor& out, const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void pad(Tensor& out,
       const Tensor& input,
       const std::vector<std::pair<int, int>>& padWidths,
-      const PadType type) override;
+      const PadType type,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+
+  /************************ Enum-Dispatched Ops ************************/
+  void binary(Tensor& out, BinaryOp op, const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void unary(Tensor& out, UnaryOp op, const Tensor& input,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void reduction(Tensor& out, ReductionOp op, const Tensor& input,
+      const std::vector<int>& axes, bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
   /************************** Unary Operators ***************************/
-  Tensor exp(const Tensor& tensor) override;
-  Tensor log(const Tensor& tensor) override;
-  Tensor negative(const Tensor& tensor) override;
-  Tensor logicalNot(const Tensor& tensor) override;
-  Tensor log1p(const Tensor& tensor) override;
-  Tensor sin(const Tensor& tensor) override;
-  Tensor cos(const Tensor& tensor) override;
-  Tensor sqrt(const Tensor& tensor) override;
-  Tensor tanh(const Tensor& tensor) override;
-  Tensor floor(const Tensor& tensor) override;
-  Tensor ceil(const Tensor& tensor) override;
-  Tensor rint(const Tensor& tensor) override;
-  Tensor absolute(const Tensor& tensor) override;
-  Tensor sigmoid(const Tensor& tensor) override;
-  Tensor erf(const Tensor& tensor) override;
-  Tensor flip(const Tensor& tensor, const unsigned dim) override;
-  Tensor clip(const Tensor& tensor, const Tensor& low, const Tensor& high)
-      override;
-  Tensor roll(const Tensor& tensor, const int shift, const unsigned axis)
-      override;
-  Tensor isnan(const Tensor& tensor) override;
-  Tensor isinf(const Tensor& tensor) override;
-  Tensor sign(const Tensor& tensor) override;
-  Tensor tril(const Tensor& tensor) override;
-  Tensor triu(const Tensor& tensor) override;
-  Tensor where(const Tensor& condition, const Tensor& x, const Tensor& y)
-      override;
+  Tensor exp(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor log(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor negative(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor logicalNot(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor log1p(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor sin(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor cos(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor sqrt(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor tanh(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor floor(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor ceil(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor rint(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor absolute(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor sigmoid(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor erf(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  void flip(Tensor& out, const Tensor& tensor, const unsigned dim,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void clip(Tensor& out, const Tensor& tensor, const Tensor& low,
+      const Tensor& high,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void roll(Tensor& out, const Tensor& tensor, const int shift,
+      const unsigned axis,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  Tensor isnan(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor isinf(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor sign(const Tensor& tensor,
+      std::shared_ptr<const Stream> stream = nullptr);
+  void tril(Tensor& out, const Tensor& tensor, int diagonal,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void triu(Tensor& out, const Tensor& tensor, int diagonal,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void where(Tensor& out, const Tensor& condition, const Tensor& x,
+      const Tensor& y,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   void topk(
       Tensor& values,
       Tensor& indices,
       const Tensor& input,
       const unsigned k,
       const Dim axis,
-      const SortMode sortMode) override;
-  Tensor sort(const Tensor& input, const Dim axis, const SortMode sortMode)
-      override;
+      const SortMode sortMode,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void sort(Tensor& out, const Tensor& input, const Dim axis,
+      const SortMode sortMode,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   void sort(
       Tensor& values,
       Tensor& indices,
       const Tensor& input,
       const Dim axis,
-      const SortMode sortMode) override;
-  Tensor argsort(const Tensor& input, const Dim axis, const SortMode sortMode)
-      override;
+      const SortMode sortMode,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void argsort(Tensor& out, const Tensor& input, const Dim axis,
+      const SortMode sortMode,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
   /************************** Binary Operators ***************************/
-#define FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, TYPE) \
-  Tensor FUNC(const Tensor& a, TYPE rhs) override;      \
-  Tensor FUNC(TYPE lhs, const Tensor& a) override;
+  Tensor add(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor sub(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor mul(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor div(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor eq(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor neq(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor lessThan(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor lessThanEqual(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor greaterThan(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor greaterThanEqual(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor logicalOr(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor logicalAnd(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor mod(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor bitwiseAnd(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor bitwiseOr(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor bitwiseXor(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor lShift(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor rShift(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
 
-#define FL_STUB_BACKEND_BINARY_OP_LITERALS_DECL(FUNC)                   \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const bool&);               \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const int&);                \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const unsigned&);           \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const char&);               \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const unsigned char&);      \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const long&);               \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const unsigned long&);      \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const long long&);          \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const unsigned long long&); \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const double&);             \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const float&);              \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const short&);              \
-  FL_STUB_BACKEND_BINARY_OP_TYPE_DECL(FUNC, const unsigned short&);
-
-#define FL_STUB_BACKEND_BINARY_OP_DECL(FUNC)                  \
-  Tensor FUNC(const Tensor& lhs, const Tensor& rhs) override; \
-  FL_STUB_BACKEND_BINARY_OP_LITERALS_DECL(FUNC);
-
-  FL_STUB_BACKEND_BINARY_OP_DECL(add);
-  FL_STUB_BACKEND_BINARY_OP_DECL(sub);
-  FL_STUB_BACKEND_BINARY_OP_DECL(mul);
-  FL_STUB_BACKEND_BINARY_OP_DECL(div);
-  FL_STUB_BACKEND_BINARY_OP_DECL(eq);
-  FL_STUB_BACKEND_BINARY_OP_DECL(neq);
-  FL_STUB_BACKEND_BINARY_OP_DECL(lessThan);
-  FL_STUB_BACKEND_BINARY_OP_DECL(lessThanEqual);
-  FL_STUB_BACKEND_BINARY_OP_DECL(greaterThan);
-  FL_STUB_BACKEND_BINARY_OP_DECL(greaterThanEqual);
-  FL_STUB_BACKEND_BINARY_OP_DECL(logicalOr);
-  FL_STUB_BACKEND_BINARY_OP_DECL(logicalAnd);
-  FL_STUB_BACKEND_BINARY_OP_DECL(mod);
-  FL_STUB_BACKEND_BINARY_OP_DECL(bitwiseAnd);
-  FL_STUB_BACKEND_BINARY_OP_DECL(bitwiseOr);
-  FL_STUB_BACKEND_BINARY_OP_DECL(bitwiseXor);
-  FL_STUB_BACKEND_BINARY_OP_DECL(lShift);
-  FL_STUB_BACKEND_BINARY_OP_DECL(rShift);
-#undef FL_STUB_BACKEND_BINARY_OP_DECL
-#undef FL_STUB_BACKEND_BINARY_OP_TYPE_DECL
-#undef FL_STUB_BACKEND_BINARY_OP_LITERALS_DECL
-
-  Tensor minimum(const Tensor& lhs, const Tensor& rhs) override;
-  Tensor maximum(const Tensor& lhs, const Tensor& rhs) override;
-  Tensor power(const Tensor& lhs, const Tensor& rhs) override;
+  Tensor minimum(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor maximum(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
+  Tensor power(const Tensor& lhs, const Tensor& rhs,
+      std::shared_ptr<const Stream> stream = nullptr);
 
   /******************************* BLAS ********************************/
-  Tensor matmul(
+  void matmul(Tensor& out,
       const Tensor& lhs,
       const Tensor& rhs,
       MatrixProperty lhsProp,
-      MatrixProperty rhsProp) override;
+      MatrixProperty rhsProp,
+      std::shared_ptr<const Stream> stream = nullptr) override;
 
   /************************** Reductions ***************************/
   Tensor amin(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
   Tensor amax(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
   void min(
       Tensor& values,
       Tensor& indices,
       const Tensor& input,
       const unsigned axis,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   void max(
       Tensor& values,
       Tensor& indices,
       const Tensor& input,
       const unsigned axis,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   Tensor sum(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
-  Tensor cumsum(const Tensor& input, const unsigned axis) override;
-  Tensor argmax(const Tensor& input, const unsigned axis, const bool keepDims)
-      override;
-  Tensor argmin(const Tensor& input, const unsigned axis, const bool keepDims)
-      override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
+  void cumsum(Tensor& out, const Tensor& input, const unsigned axis,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void argmax(Tensor& out, const Tensor& input, const unsigned axis,
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
+  void argmin(Tensor& out, const Tensor& input, const unsigned axis,
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   Tensor mean(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
   Tensor median(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
-  Tensor var(
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
+  void var(Tensor& out,
       const Tensor& input,
       const std::vector<int>& axes,
       const bool bias,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   Tensor std(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
-  Tensor norm(
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
+  void norm(Tensor& out,
       const Tensor& input,
       const std::vector<int>& axes,
       double p,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr) override;
   Tensor countNonzero(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
   Tensor any(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
   Tensor all(
       const Tensor& input,
       const std::vector<int>& axes,
-      const bool keepDims) override;
+      const bool keepDims,
+      std::shared_ptr<const Stream> stream = nullptr);
+
+  /************************** Data Transfer ***************************/
+  void copy(Tensor& dst, const Tensor& src, const Stream& stream) override;
 
   /************************** Utils ***************************/
   void print(const Tensor& tensor) override;

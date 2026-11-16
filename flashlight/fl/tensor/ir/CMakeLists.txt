@@ -1,0 +1,40 @@
+# ----------------------------- Sources -----------------------------
+target_sources(
+  flashlight
+  PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/BinaryNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/CastNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ClipNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ConcatenateNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Conv2dNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/CustomNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/CumsumNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ExternalUse.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/FlipNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/FusedElementwiseNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/FusedReduceElementwiseNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/IndexNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/IndexedUpdateNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/MatmulNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/MultiValueNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/BatchNormNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Node.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/NodeType.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/PadNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Pool2dNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ProjectionNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/OpProperties.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ReshapeNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ScalarNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ReductionNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/RollNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/TileNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/TransferNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/TransposeNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/TriangularNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/UnaryNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/Use.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/ValueNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/WhereNode.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/NodeUtils.cpp
+)

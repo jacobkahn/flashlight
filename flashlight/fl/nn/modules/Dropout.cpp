@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/nn/modules/Dropout.h"
 
+#include <format>
+
 #include "flashlight/fl/autograd/Functions.h"
 #include "flashlight/fl/nn/Init.h"
 
@@ -14,9 +16,9 @@ namespace fl {
 
 Dropout::Dropout(double drop_ratio) : ratio_(drop_ratio) {}
 
-Variable Dropout::forward(const Variable& input) {
+Tensor Dropout::forward(const Tensor& input) {
   if (train_) {
-    return dropout(input, ratio_);
+    return autograd::dropout(input, ratio_);
   } else {
     return input;
   }
@@ -27,7 +29,7 @@ std::unique_ptr<Module> Dropout::clone() const {
 }
 
 std::string Dropout::prettyString() const {
-  return ("Dropout (" + std::to_string(ratio_) + ")");
+  return std::format("Dropout ({})", ratio_);
 }
 
 } // namespace fl

@@ -17,7 +17,7 @@ void distributeModuleGrads(
     std::shared_ptr<const Module> module,
     std::shared_ptr<Reducer> reducer) {
   for (auto& param : module->params()) {
-    param.registerGradHook([reducer](Variable& grad) { reducer->add(grad); });
+    param.registerGradHook([reducer](Tensor& grad) { reducer->add(grad); });
   }
 }
 

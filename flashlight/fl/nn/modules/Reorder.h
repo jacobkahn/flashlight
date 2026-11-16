@@ -17,7 +17,7 @@ namespace fl {
    // A layer which transposes a matrix
    auto transposeLayer = Reorder(1, 0);
 
-   auto var = Variable(Tensor({1, 2, 3, 4}), false);
+   auto var = Tensor(Tensor({1, 2, 3, 4}), false);
 
    // Make the last dimension the first dimension
    var = Reorder(3, 0, 1, 2)(var);
@@ -42,7 +42,7 @@ class FL_API Reorder : public UnaryModule {
    */
   explicit Reorder(Shape shape);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

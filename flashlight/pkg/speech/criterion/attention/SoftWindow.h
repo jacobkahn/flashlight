@@ -18,8 +18,8 @@ class SoftWindow : public WindowBase {
   SoftWindow();
   SoftWindow(double std, double avgRate, int offset);
 
-  Variable computeWindow(
-      const Variable& prevAttn,
+  Tensor computeWindow(
+      const Tensor& prevAttn,
       int step,
       int targetLen,
       int inputSteps,
@@ -27,7 +27,7 @@ class SoftWindow : public WindowBase {
       const Tensor& inputSizes = Tensor(),
       const Tensor& targetSizes = Tensor()) const override;
 
-  Variable computeVectorizedWindow(
+  Tensor computeVectorizedWindow(
       int targetLen,
       int inputSteps,
       int batchSize,
@@ -35,7 +35,7 @@ class SoftWindow : public WindowBase {
       const Tensor& targetSizes = Tensor()) const override;
 
  private:
-  Variable compute(
+  Tensor compute(
       int targetLen,
       int inputSteps,
       int batchSize,

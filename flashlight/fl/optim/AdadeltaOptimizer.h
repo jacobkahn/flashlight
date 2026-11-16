@@ -9,10 +9,10 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -50,7 +50,7 @@ class FL_API AdadeltaOptimizer : public FirstOrderOptimizer {
    * parameters.
    */
   explicit AdadeltaOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate = 1.0,
       float rho = 0.9,
       float epsilon = 1e-8,

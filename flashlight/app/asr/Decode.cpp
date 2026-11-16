@@ -195,7 +195,7 @@ int main(int argc, char** argv) {
 
   std::vector<float> transition;
   if (FLAGS_criterion == kAsgCriterion) {
-    transition = criterion->param(0).tensor().toHostVector<float>();
+    transition = criterion->param(0).toHostVectorSync<float>();
   }
 
   // Prepare log writer
@@ -399,8 +399,8 @@ int main(int argc, char** argv) {
 
       /* 2. Load Targets */
       TargetUnit targetUnit;
-      auto tokenTarget = sample[kTargetIdx].toHostVector<int>();
-      auto wordTarget = sample[kWordIdx].toHostVector<int>();
+      auto tokenTarget = sample[kTargetIdx].toHostVectorSync<int>();
+      auto wordTarget = sample[kWordIdx].toHostVectorSync<int>();
       // TODO: we will reform the dataset so that the loaded word
       // targets are strings already
       std::vector<std::string> wordTargetStr;
@@ -425,7 +425,7 @@ int main(int argc, char** argv) {
       /* 3. Load Emissions */
       EmissionUnit emissionUnit;
       if (FLAGS_emission_dir.empty()) {
-        fl::Variable rawEmission;
+        fl::Tensor rawEmission;
         if (usePlugin) {
           rawEmission = localNetwork
                             ->forward(
@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
               fl::input(sample[kInputIdx]), localNetwork, sample[kDurationIdx]);
         }
         emissionUnit = EmissionUnit(
-            rawEmission.tensor().toHostVector<float>(),
+            rawEmission.toHostVectorSync<float>(),
             sampleId,
             rawEmission.dim(1),
             rawEmission.dim(0));

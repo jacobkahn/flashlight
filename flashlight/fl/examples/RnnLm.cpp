@@ -127,7 +127,7 @@ class RnnLm : public Container {
     add(linear);
   }
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override {
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override {
     auto inSz = inputs.size();
     if (inSz < 1 || inSz > 3) {
       throw std::invalid_argument("Invalid inputs size");
@@ -135,23 +135,23 @@ class RnnLm : public Container {
     return rnn->forward(inputs);
   }
 
-  std::tuple<Variable, Variable, Variable>
-  forward(const Variable& input, const Variable& h, const Variable& c) {
+  std::tuple<Tensor, Tensor, Tensor>
+  forward(const Tensor& input, const Tensor& h, const Tensor& c) {
     auto output = embed->forward(input);
-    Variable ho, co;
+    Tensor ho, co;
     std::tie(output, ho, co) = rnn->forward(output, h, c);
 
     // Truncate BPTT
-    ho.setCalcGrad(false);
-    co.setCalcGrad(false);
+    ho.setRequiresGrad(false);
+    co.setRequiresGrad(false);
 
     output = linear->forward(output);
     output = logsoftmax_(output);
     return std::make_tuple(output, ho, co);
   }
 
-  std::tuple<Variable, Variable, Variable>
-  operator()(const Variable& input, const Variable& h, const Variable& c) {
+  std::tuple<Tensor, Tensor, Tensor>
+  operator()(const Tensor& input, const Tensor& h, const Tensor& c) {
     return forward(input, h, c);
   }
 
@@ -209,12 +209,12 @@ int main(int argc, char** argv) {
   auto eval_loop =
       [&model, &criterion, kInputIdx, kTargetIdx](LMDataset& dataset) {
         AverageValueMeter avg_loss_meter;
-        Variable output, h, c;
+        Tensor output, h, c;
         for (auto& example : dataset) {
           std::tie(output, h, c) = model(noGrad(example[kInputIdx]), h, c);
           auto target = noGrad(example[kTargetIdx]);
           auto loss = criterion(output, target);
-          avg_loss_meter.add(loss.tensor().scalar<float>(), target.elements());
+          avg_loss_meter.add(loss.scalarSync<float>(), target.elements());
         }
         return avg_loss_meter.value()[0];
       };
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
     TimeMeter timer(true);
     timer.resume();
 
-    Variable output, h, c;
+    Tensor output, h, c;
 
     if (e >= anneal_after_epoch) {
       opt.setLr(opt.getLr() / 2);
@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
       auto target = noGrad(example[kTargetIdx]);
 
       auto loss = criterion(output, target);
-      train_loss_meter.add(loss.tensor().scalar<float>(), target.elements());
+      train_loss_meter.add(loss.scalarSync<float>(), target.elements());
 
       opt.zeroGrad();
       loss.backward();

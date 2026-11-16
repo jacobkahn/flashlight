@@ -12,8 +12,9 @@
 #include "flashlight/fl/runtime/DeviceManager.h"
 #include "flashlight/fl/runtime/DeviceType.h"
 #include "flashlight/fl/tensor/DefaultTensorType.h"
+#include "flashlight/fl/tensor/JitTensorBase.h"
 #include "flashlight/fl/tensor/TensorBackend.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -90,6 +91,14 @@ void relativeSync(const std::vector<Tensor>& waits, const Stream& waitOn) {
 
 void eval(Tensor& tensor) {
   tensor.backend().eval(tensor);
+}
+
+bool ready(const Tensor& tensor) {
+  if (tensor.backendType() != TensorBackendType::Jit) {
+    return true; // non-JIT tensors are always concrete
+  }
+  // JIT tensor: check if the node has been evaluated
+  return toJitTensorBase(tensor).node()->getResult().has_value();
 }
 
 int getDevice() {

@@ -8,8 +8,9 @@
 #pragma once
 
 #include "flashlight/fl/common/Defines.h"
+#include "flashlight/fl/runtime/StreamOrDevice.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
 
 namespace fl {
@@ -27,19 +28,27 @@ FL_API void setSeed(const int seed);
  * Initialize a tensor with elements sampled from the standard normal
  * distribution.
  *
- * @param[in] dims the shape of the tensor to create
+ * @param[in] shape the shape of the tensor to create
  * @param[in] type the type of the tensor. Defaults to float
+ * @param[in] s optional stream or device target
  * @return a tensor with the given dimensions with elements sampled accordingly
  */
-FL_API Tensor randn(const Shape& shape, dtype type = dtype::f32);
+FL_API Tensor randn(
+    const Shape& shape,
+    dtype type = dtype::f32,
+    StreamOrDevice s = {});
 
 /**
  * Initialize a tensor with elements sampled uniformly from the interval [0, 1).
  *
  * @param[in] shape the shape of the tensor to create
  * @param[in] type the type of the tensor. Defaults to float
+ * @param[in] s optional stream or device target
  * @return a tensor with the given dimensions with elements sampled accordingly
  */
-FL_API Tensor rand(const Shape& shape, dtype type = dtype::f32);
+FL_API Tensor rand(
+    const Shape& shape,
+    dtype type = dtype::f32,
+    StreamOrDevice s = {});
 
 } // namespace fl

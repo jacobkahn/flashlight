@@ -32,20 +32,20 @@ inline void throw_on_error(ctcStatus_t status, const char* message) {
 }
 } // namespace
 
-std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> ConnectionistTemporalClassificationCriterion::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() != 2) {
     throw std::invalid_argument("Invalid inputs size");
   }
   const auto& input =
-      fl::moddims(inputs[0], {0, 0, 0}); // remove trailing singleton dims
+      autograd::reshape(inputs[0], {0, 0, 0}); // remove trailing singleton dims
   const auto& target = inputs[1];
   validate(input, target);
   const int N = input.dim(0);
   const int T = input.dim(1);
   const int B = input.dim(2);
   const int batchL = target.dim(0);
-  cudaStream_t stream = input.tensor().stream().impl<CUDAStream>().handle();
+  cudaStream_t stream = input.stream().impl<CUDAStream>().handle();
 
   ctcOptions options;
   options.loc = CTC_GPU;
@@ -54,10 +54,10 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
 
   Tensor inputarr({N, B, T}, input.type());
   inputarr(fl::span, fl::span, fl::span) =
-      fl::transpose(input.tensor(), {0, 2, 1});
+      fl::transpose(input, {0, 2, 1});
 
   Tensor grad;
-  if (input.isCalcGrad()) {
+  if (input.requiresGrad()) {
     grad = fl::full(inputarr.shape(), 0.0, inputarr.type());
   }
 
@@ -65,13 +65,15 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
   std::vector<int> labels;
   std::vector<int> labelLengths;
   std::vector<int> batchTargetVec(target.elements());
-  target.host(batchTargetVec.data());
+  target.hostSync(batchTargetVec.data());
 
   Tensor targetSize({B}, fl::dtype::s32);
   Tensor scale({B}, fl::dtype::f32);
 
   {
-    fl::DevicePtr targetRaw(target.tensor());
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousTarget = target.asContiguousTensor();
+    fl::DevicePtr targetRaw(contiguousTarget);
     fl::DevicePtr targetSizeRaw(targetSize);
     fl::DevicePtr scaleRaw(scale);
 
@@ -93,8 +95,8 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
         stream);
   }
 
-  auto batchTargetSizeVec = targetSize.toHostVector<int>();
-  auto batchScaleVec = scale.toHostVector<float>();
+  auto batchTargetSizeVec = targetSize.toHostVectorSync<int>();
+  auto batchScaleVec = scale.toHostVectorSync<float>();
 
   for (int b = 0; b < B; ++b) {
     const int* targetVec = batchTargetVec.data() + b * batchL;
@@ -150,17 +152,17 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
   result = result * batchScales;
 
   auto gradFunc = [grad, batchScales](
-                      std::vector<Variable>& moduleInputs,
-                      const Variable& grad_output) {
-    auto gradScales = grad_output.tensor() * batchScales;
+                      std::vector<Tensor>& moduleInputs,
+                      const Tensor& grad_output) {
+    auto gradScales = grad_output * batchScales;
     auto& in = moduleInputs[0];
     gradScales = fl::tile(
         fl::reshape(gradScales, {1, grad_output.dim(0), 1}),
         {in.dim(0), 1, in.dim(1)});
     moduleInputs[0].addGrad(
-        Variable(fl::transpose(grad * gradScales, {0, 2, 1}), false));
+        Tensor(fl::transpose(grad * gradScales, {0, 2, 1}), false));
   };
 
-  return {Variable(result, {input, target}, gradFunc)};
+  return {Tensor(result, {input, target}, gradFunc)};
 }
 } // namespace fl

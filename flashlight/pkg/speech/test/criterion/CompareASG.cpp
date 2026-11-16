@@ -17,7 +17,7 @@
 #include <random>
 
 #include "flashlight/fl/flashlight.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/pkg/speech/criterion/AutoSegmentationCriterion.h"
 
 using namespace fl::pkg::speech;
@@ -50,9 +50,9 @@ struct CriterionOutput {
 
 CriterionOutput
 run(const Tensor& input, const Tensor& target, const Tensor& trans) {
-  fl::Variable inputVar(input, true);
-  fl::Variable targetVar(target, false);
-  fl::Variable transVar(trans, true);
+  fl::Tensor inputVar(input, true);
+  fl::Tensor targetVar(target, false);
+  fl::Tensor transVar(trans, true);
 
   AutoSegmentationCriterion crit(N, CriterionScaleMode::TARGET_SZ_SQRT);
   crit.setParams(transVar, 0);
@@ -60,9 +60,9 @@ run(const Tensor& input, const Tensor& target, const Tensor& trans) {
   loss.backward();
 
   CriterionOutput result;
-  result.loss = loss.tensor();
-  result.inputGrad = inputVar.grad().tensor();
-  result.transGrad = transVar.grad().tensor();
+  result.loss = loss;
+  result.inputGrad = inputVar.grad();
+  result.transGrad = transVar.grad();
   return result;
 }
 
@@ -72,7 +72,7 @@ double discrepancy(const Tensor& a, const Tensor& b) {
   const auto& ad = a.astype(fl::dtype::f64);
   const auto& bd = b.astype(fl::dtype::f64);
   return fl::amax(fl::abs(ad - bd) / (1e-7 + 1e-5 * fl::abs(bd)))
-      .scalar<double>();
+      .scalarSync<double>();
 }
 
 void printDiscrepancies(

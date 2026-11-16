@@ -16,7 +16,7 @@ using std::vector;
 namespace fl {
 
 RMSPropOptimizer::RMSPropOptimizer(
-    const vector<Variable>& parameters,
+    const vector<Tensor>& parameters,
     float learningRate,
     float rho /* = 0.99 */,
     float epsilon /* = 1e-8 */,
@@ -51,8 +51,8 @@ void RMSPropOptimizer::step() {
       continue;
     }
 
-    const Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    const Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
 
     if (wd_ != 0) {
       // Weight decay term

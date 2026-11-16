@@ -16,7 +16,7 @@ StepWindow::StepWindow() = default;
 StepWindow::StepWindow(int sMin, int sMax, double vMin, double vMax)
     : sMin_(sMin), sMax_(sMax), vMin_(vMin), vMax_(vMax) {}
 
-Variable StepWindow::compute(
+Tensor StepWindow::compute(
     int targetLen,
     int inputSteps,
     int batchSize,
@@ -49,11 +49,11 @@ Variable StepWindow::compute(
   // force all -inf values to be kAttentionMaskValue to avoid nan in softmax
   maskTensor = fl::log(maskTensor);
   maskTensor(maskTensor < kAttentionMaskValue) = kAttentionMaskValue;
-  return Variable(maskTensor, false);
+  return Tensor(maskTensor, false);
 }
 
-Variable StepWindow::computeWindow(
-    const Variable& /* unused */,
+Tensor StepWindow::computeWindow(
+    const Tensor& /* unused */,
     int step,
     int targetLen,
     int inputSteps,
@@ -65,7 +65,7 @@ Variable StepWindow::computeWindow(
       targetLen, inputSteps, batchSize, inputSizes, targetSizes, decoderSteps);
 }
 
-Variable StepWindow::computeVectorizedWindow(
+Tensor StepWindow::computeVectorizedWindow(
     int targetLen,
     int inputSteps,
     int batchSize,

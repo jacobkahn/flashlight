@@ -33,7 +33,7 @@ TEST(SerializationTest, VisionTransformer) {
   load(path, loaded);
   loaded->eval();
 
-  auto input = Variable(fl::rand({hiddenEmbSize, 197, 20}), false);
+  auto input = Tensor(fl::rand({hiddenEmbSize, 197, 20}), false);
   auto output = model->forward({input});
   auto outputl = loaded->forward({input});
 
@@ -63,7 +63,7 @@ TEST(SerializationTest, ViT) {
   load(path, loaded);
   loaded->eval();
 
-  auto input = Variable(fl::rand({224, 224, 3, 20}), false);
+  auto input = Tensor(fl::rand({224, 224, 3, 20}), false);
   auto output = model->forward({input});
   auto outputl = loaded->forward({input});
 

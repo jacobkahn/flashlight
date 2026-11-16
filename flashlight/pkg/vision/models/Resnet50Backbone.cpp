@@ -33,8 +33,8 @@ Resnet50Backbone::Resnet50Backbone() {
   add(std::move(tail));
 }
 
-std::vector<Variable> Resnet50Backbone::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> Resnet50Backbone::forward(
+    const std::vector<Tensor>& input) {
   const auto& features = module(0)->forward(input);
   const auto& output = module(1)->forward(features);
   return {output[0], features[0]};

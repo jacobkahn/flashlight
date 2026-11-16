@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -23,7 +24,7 @@ void Residual::addScale(int beforeLayer, float scale) {
         "Residual: invalid layer index " + std::to_string(beforeLayer) +
         " before which apply the scaling");
   }
-  if (scales_.find(beforeLayer - 1) != scales_.end()) {
+  if (scales_.contains(beforeLayer - 1)) {
     throw std::invalid_argument(
         "Residual: scaling before layer " + std::to_string(beforeLayer) +
         " was already added; adding only once is allowed");
@@ -41,8 +42,8 @@ void Residual::checkShortcut(int fromLayer, int toLayer) {
         std::to_string(fromLayer) + " and toLayer=" + std::to_string(toLayer) +
         " parameters. They are out of range of added layers");
   }
-  if (shortcut_.find(toLayer - 1) != shortcut_.end() &&
-      shortcut_[toLayer - 1].find(fromLayer) != shortcut_[toLayer - 1].end()) {
+  if (shortcut_.contains(toLayer - 1) &&
+      shortcut_[toLayer - 1].contains(fromLayer)) {
     throw std::invalid_argument(
         "Residual: skip connection for fromLayer " + std::to_string(fromLayer) +
         " to toLayer " + std::to_string(toLayer) + " is already added");
@@ -64,34 +65,34 @@ void Residual::addShortcut(int fromLayer, int toLayer) {
   processShortcut(fromLayer, toLayer, -1);
 }
 
-Variable Residual::applyScale(const Variable& input, const int layerIndex) {
+Tensor Residual::applyScale(const Tensor& input, const int layerIndex) {
   float scale =
-      scales_.find(layerIndex) != scales_.end() ? scales_[layerIndex] : 1.;
+      scales_.contains(layerIndex) ? scales_[layerIndex] : 1.;
   return input * scale;
 }
 
-std::vector<Variable> Residual::forward(const std::vector<Variable>& inputs) {
+std::vector<Tensor> Residual::forward(const std::vector<Tensor>& inputs) {
   if (inputs.size() != 1) {
     throw std::invalid_argument("Residual module expects only one input");
   }
   return {forward(inputs[0])};
 }
 
-Variable Residual::forward(const Variable& input) {
-  Variable output = input;
+Tensor Residual::forward(const Tensor& input) {
+  Tensor output = input;
   int nLayers = modules_.size() - projectionsIndices_.size();
-  std::vector<Variable> outputs(nLayers + 1, Variable());
+  std::vector<Tensor> outputs(nLayers + 1, Tensor());
   outputs[0] = input;
 
   int moduleIndex = 0, layerIndex = 0;
 
   while (layerIndex < nLayers) {
-    while (projectionsIndices_.find(moduleIndex) != projectionsIndices_.end()) {
+    while (projectionsIndices_.contains(moduleIndex)) {
       moduleIndex++;
     }
-    if (shortcut_.find(layerIndex) != shortcut_.end()) {
+    if (shortcut_.contains(layerIndex)) {
       for (const auto& shortcut : shortcut_[layerIndex]) {
-        Variable connectionOut = outputs[shortcut.first];
+        Tensor connectionOut = outputs[shortcut.first];
         if (shortcut.second != -1) {
           connectionOut = modules_[shortcut.second]
                               ->forward({outputs[shortcut.first]})
@@ -107,9 +108,9 @@ Variable Residual::forward(const Variable& input) {
     layerIndex++;
     moduleIndex++;
   }
-  if (shortcut_.find(nLayers) != shortcut_.end()) {
+  if (shortcut_.contains(nLayers)) {
     for (const auto& shortcut : shortcut_[nLayers]) {
-      Variable connectionOut = outputs[shortcut.first];
+      Tensor connectionOut = outputs[shortcut.first];
       if (shortcut.second != -1) {
         connectionOut = modules_[shortcut.second]
                             ->forward({outputs[shortcut.first]})
@@ -122,7 +123,6 @@ Variable Residual::forward(const Variable& input) {
 }
 
 std::string Residual::prettyString() const {
-  std::ostringstream ss;
   // prepare inverted residual skip connection
   std::unordered_map<int, std::unordered_map<int, int>>
       reverseShortcut; // start -> end
@@ -135,50 +135,54 @@ std::string Residual::prettyString() const {
   int nLayers = modules_.size() - projectionsIndices_.size();
   int moduleIndex = -1, layerIndex = 0;
   std::unordered_map<int, float>::const_iterator scaleIt;
+  std::string result;
 
   while (layerIndex <= nLayers) {
-    ss << "\n\tRes(" << layerIndex << "): ";
+    result += std::format("\n\tRes({}): ", layerIndex);
     if (layerIndex == 0) {
-      ss << "Input";
+      result += "Input";
     } else {
       while (projectionsIndices_.find(moduleIndex) !=
              projectionsIndices_.end()) {
         moduleIndex++;
       }
-      ss << modules_[moduleIndex]->prettyString();
+      result += modules_[moduleIndex]->prettyString();
     }
 
     scaleIt = scales_.find(layerIndex);
     if (scaleIt != scales_.end()) {
-      ss << " with scale (before layer is applied) " << scaleIt->second << ";";
+      result += std::format(
+          " with scale (before layer is applied) {};", scaleIt->second);
     }
 
-    if (reverseShortcut.find(layerIndex) != reverseShortcut.end() &&
+    if (reverseShortcut.contains(layerIndex) &&
         !reverseShortcut[layerIndex].empty()) {
-      ss << "; skip connection to ";
+      result += "; skip connection to ";
       for (auto shortcut : reverseShortcut[layerIndex]) {
         if (shortcut.first < nLayers) {
-          ss << "layer Res(" << shortcut.first + 1 << ")";
+          result += std::format("layer Res({})", shortcut.first + 1);
         } else {
-          ss << "output";
+          result += "output";
         }
         if (shortcut.second != -1) {
-          ss << " with transformation: "
-             << modules_[shortcut.second]->prettyString() << ";";
+          result += std::format(
+              " with transformation: {};",
+              modules_[shortcut.second]->prettyString());
         }
-        ss << " ";
+        result += " ";
       }
     }
     layerIndex++;
     moduleIndex++;
   }
-  ss << "\n\tRes(" << nLayers + 1 << "): Output;";
+  result += std::format("\n\tRes({}): Output;", nLayers + 1);
   scaleIt = scales_.find(nLayers + 1);
   if (scaleIt != scales_.end()) {
-    ss << " with scale (before layer is applied) " << scaleIt->second << ";";
+    result += std::format(
+        " with scale (before layer is applied) {};", scaleIt->second);
   }
 
-  return ss.str();
+  return result;
 }
 
 } // namespace fl

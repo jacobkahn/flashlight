@@ -92,12 +92,12 @@ lib::seq::CriterionScaleMode getCriterionScaleMode(
 // Input: N x T x B (type: float), Output: T x B (type: int)
 Tensor viterbiPath(const Tensor& input, const Tensor& trans);
 
-fl::Variable getLinearTarget(const fl::Variable& target, int T);
+fl::Tensor getLinearTarget(const fl::Tensor& target, int T);
 
 // apply mask to the input with proper grad.
 // Mask should be the same size as input
-fl::Variable applySeq2SeqMask(
-    const fl::Variable& input,
+fl::Tensor applySeq2SeqMask(
+    const fl::Tensor& input,
     const Tensor& targetClasses,
     int padValue);
 } // namespace speech

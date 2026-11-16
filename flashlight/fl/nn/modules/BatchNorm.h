@@ -29,7 +29,7 @@ class FL_API BatchNorm : public UnaryModule {
   std::vector<int> featAxis_;
   int featSize_;
   int numBatchesTracked_;
-  Variable runningMean_, runningVar_;
+  Tensor runningMean_, runningVar_;
   double momentum_, epsilon_;
   bool affine_, trackStats_;
 
@@ -127,7 +127,7 @@ class FL_API BatchNorm : public UnaryModule {
 
   BatchNorm& operator=(BatchNorm&& other) = default;
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

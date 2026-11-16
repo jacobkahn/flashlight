@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 

@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include <sstream>
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/contrib/modules/SpecAugment.h"
@@ -40,21 +40,21 @@ SpecAugment::SpecAugment(
   }
 }
 
-Variable SpecAugment::forward(const Variable& input) {
-  if (input.isCalcGrad()) {
+Tensor SpecAugment::forward(const Tensor& input) {
+  if (input.requiresGrad()) {
     throw std::invalid_argument(
         "input gradient calculation is not supported for SpecAugment.");
   }
 
-  auto output = Variable(input.tensor(), false);
+  auto output = Tensor(input, false);
   if (!train_) {
     return output;
   }
 
-  auto& opArr = output.tensor();
+  auto& opArr = output.detach();
 
   double replaceVal = (maskStrategy_ == MaskingStrategy::GLOBAL_MEAN)
-      ? fl::mean(input.tensor()).asScalar<double>()
+      ? fl::mean(input).asScalar<double>()
       : 0.0;
 
   auto numFreqChans = input.dim(1); // number of frequency channels
@@ -91,15 +91,9 @@ std::unique_ptr<Module> SpecAugment::clone() const {
 }
 
 std::string SpecAugment::prettyString() const {
-  std::ostringstream ss;
-  ss << "SpecAugment ( ";
-  ss << "W: " << timeWarpW_ << ", ";
-  ss << "F: " << freqMaskF_ << ", ";
-  ss << "mF: " << numFreqMask_ << ", ";
-  ss << "T: " << timeMaskT_ << ", ";
-  ss << "p: " << timeMaskP_ << ", ";
-  ss << "mT: " << numTimeMask_;
-  ss << " )";
-  return ss.str();
+  return std::format(
+      "SpecAugment ( W: {}, F: {}, mF: {}, T: {}, p: {}, mT: {} )",
+      timeWarpW_, freqMaskF_, numFreqMask_, timeMaskT_, timeMaskP_,
+      numTimeMask_);
 }
 } // namespace fl

@@ -11,7 +11,7 @@
 #include <random>
 #include <stdexcept>
 
-#include "flashlight/fl/autograd/tensor/AutogradOps.h"
+#include "flashlight/fl/tensor/AutogradOps.h"
 #include "flashlight/fl/nn/Utils.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Random.h"

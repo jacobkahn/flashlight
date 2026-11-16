@@ -6,6 +6,9 @@
  */
 
 #include "flashlight/fl/nn/modules/Normalize.h"
+
+#include <format>
+
 #include "flashlight/fl/autograd/Functions.h"
 
 namespace fl {
@@ -17,8 +20,8 @@ Normalize::Normalize(
     double value /* = 1 */)
     : axes_(axes), p_(p), eps_(eps), value_(value) {}
 
-Variable Normalize::forward(const Variable& input) {
-  return value_ * normalize(input, axes_, p_, eps_);
+Tensor Normalize::forward(const Tensor& input) {
+  return value_ * autograd::normalize(input, axes_, p_, eps_);
 }
 
 std::unique_ptr<Module> Normalize::clone() const {
@@ -26,17 +29,13 @@ std::unique_ptr<Module> Normalize::clone() const {
 }
 
 std::string Normalize::prettyString() const {
-  std::ostringstream ss;
-  ss << "Normalize";
-  ss << " ( axis : { ";
+  std::string axes;
   for (auto d : axes_) {
-    ss << d << " ";
+    axes += std::format("{} ", d);
   }
-  ss << "} , p : " << p_;
-  ss << ", eps : " << eps_;
-  ss << ", value : " << value_;
-  ss << " )";
-  return ss.str();
+  return std::format(
+      "Normalize ( axis : {{ {}}} , p : {}, eps : {}, value : {} )",
+      axes, p_, eps_, value_);
 }
 
 } // namespace fl

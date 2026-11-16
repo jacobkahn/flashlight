@@ -30,7 +30,7 @@ class FL_API MeanSquaredError : public BinaryModule {
  public:
   MeanSquaredError() = default;
 
-  Variable forward(const Variable& inputs, const Variable& targets) override;
+  Tensor forward(const Tensor& inputs, const Tensor& targets) override;
 
   std::unique_ptr<Module> clone() const override;
 
@@ -54,7 +54,7 @@ class FL_API MeanAbsoluteError : public BinaryModule {
  public:
   MeanAbsoluteError() = default;
 
-  Variable forward(const Variable& inputs, const Variable& targets) override;
+  Tensor forward(const Tensor& inputs, const Tensor& targets) override;
 
   std::unique_ptr<Module> clone() const override;
 
@@ -80,7 +80,7 @@ class FL_API BinaryCrossEntropy : public BinaryModule {
 
   using BinaryModule::forward;
 
-  Variable forward(const Variable& inputs, const Variable& targets) override;
+  Tensor forward(const Tensor& inputs, const Tensor& targets) override;
 
   /**
    * Perform forward loss computation with an additional weight tensor.
@@ -89,10 +89,10 @@ class FL_API BinaryCrossEntropy : public BinaryModule {
    * @param targets a tensor with the target values
    * @param weights a rescaling weight given to the loss of each element.
    */
-  Variable forward(
-      const Variable& inputs,
-      const Variable& targets,
-      const Variable& weights);
+  Tensor forward(
+      const Tensor& inputs,
+      const Tensor& targets,
+      const Tensor& weights);
 
   std::unique_ptr<Module> clone() const override;
 
@@ -151,12 +151,12 @@ class FL_API CategoricalCrossEntropy : public BinaryModule {
    * Computes the categorical cross entropy loss for some input and target
    * tensors.
    *
-   * @param inputs a `Variable` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
+   * @param inputs a `Tensor` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$] where \f$C\f$ is the number of classes.
-   * @param targets an integer `Variable` with shape [\f$B_1\f$, \f$B_2\f$,
+   * @param targets an integer `Tensor` with shape [\f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$]. The values must be in [\f$0\f$, \f$C - 1\f$]
    */
-  Variable forward(const Variable& inputs, const Variable& targets) override;
+  Tensor forward(const Tensor& inputs, const Tensor& targets) override;
 
   std::unique_ptr<Module> clone() const override;
 
@@ -188,8 +188,8 @@ class FL_API AdaptiveSoftMaxLoss : public BinaryModule {
   ReduceMode reduction_;
   int ignoreIndex_{-1};
 
-  Variable
-  cast(const Variable& input, const Shape& outDims, const Tensor& indices);
+  Tensor
+  cast(const Tensor& input, const Shape& outDims, const Tensor& indices);
 
  public:
   AdaptiveSoftMaxLoss() = default;
@@ -213,14 +213,14 @@ class FL_API AdaptiveSoftMaxLoss : public BinaryModule {
    * Computes the categorical cross entropy loss for some input and target
    * tensors (uses adaptive softmax function to do this efficiently)
    *
-   * @param inputs a `Variable` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
+   * @param inputs a `Tensor` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$] where \f$C\f$ is the number of classes.
-   * @param targets an integer `Variable` with shape [\f$B_1\f$, \f$B_2\f$,
+   * @param targets an integer `Tensor` with shape [\f$B_1\f$, \f$B_2\f$,
    * \f$B_3\f$]. The values must be in [\f$0\f$, \f$C - 1\f$]
    */
-  Variable forward(const Variable& inputs, const Variable& targets) override;
+  Tensor forward(const Tensor& inputs, const Tensor& targets) override;
 
-  void setParams(const Variable& var, int position) override;
+  void setParams(const Tensor& var, int position) override;
 
   std::unique_ptr<Module> clone() const override;
 

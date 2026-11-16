@@ -28,9 +28,9 @@ class PositionalEmbeddingSine : public Container {
   PositionalEmbeddingSine& operator=(PositionalEmbeddingSine&& other) = default;
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
-  std::vector<Variable> operator()(const std::vector<Variable>& input);
+  std::vector<Tensor> operator()(const std::vector<Tensor>& input);
 
   std::string prettyString() const override;
 

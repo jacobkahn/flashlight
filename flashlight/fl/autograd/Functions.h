@@ -9,102 +9,69 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "flashlight/fl/common/Defines.h"
-#include "flashlight/fl/common/Types.h"
 #include "flashlight/fl/common/Utils.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Index.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
-namespace fl {
+namespace fl::autograd {
 
-class Variable;
 
 namespace detail {
 
-struct ConvBenchmarks;
-
-struct AutogradPayload;
-
-FL_API Tensor tileAs(const Tensor& input, const Shape& rdims);
-
-FL_API Tensor sumAs(const Tensor& input, const Shape& rdims);
-
-/* Reshape a tensor to the dims it had before a reduction over the given axes.
- * - This is a no-op if keepDims is true.
- */
-FL_API Shape expandedShapeFromReducedDims(
-    const Tensor& input,
-    const std::vector<int>& axes,
-    bool keepDims = false);
-
-FL_API bool areVariableTypesEqual(const Variable& a, const Variable& b);
+FL_API bool areDtypesEqual(const Tensor& a, const Tensor& b);
 
 template <typename... Args>
-bool areVariableTypesEqual(
-    const Variable& a,
-    const Variable& b,
+bool areDtypesEqual(
+    const Tensor& a,
+    const Tensor& b,
     const Args&... args) {
-  return areVariableTypesEqual(a, b) && areVariableTypesEqual(a, args...) &&
-      areVariableTypesEqual(b, args...);
+  return areDtypesEqual(a, b) && areDtypesEqual(a, args...) &&
+      areDtypesEqual(b, args...);
 }
 
 /**
- * Performs type conversion based on the optim level. Operations that lack
- * sufficient precision are automatically upcast to f32 before computation.
- * These are typically operations that require accumulations or reductions.
+ * Autograd-aware wrappers for Tensor-level operations.
+ * Called by Tensor's operator(), flat(), astype(), and arithmetic operators
+ * when requiresGrad() is true, so gradient logic lives in fl/autograd/ rather
+ * than in fl/tensor/.
  */
-template <typename T>
-T adjustInputType(const T& in, const char* funcname) {
-  OptimLevel optimLevel = OptimMode::get().getOptimLevel();
-  // Fastpath - DEFAULT mode never casts tensors
-  if (optimLevel == OptimLevel::DEFAULT) {
-    return in;
-  }
+FL_API Tensor autogradIndex(
+    const Tensor& input,
+    const std::vector<Index>& indices,
+    const Tensor& forwardResult);
+FL_API Tensor
+autogradFlat(const Tensor& input, const Index& idx, const Tensor& fwdResult);
+FL_API Tensor autogradAstype(
+    const Tensor& input,
+    fl::dtype newType,
+    const Tensor& forwardResult);
 
-  T res;
-  auto& funcs = kOptimLevelTypeExclusionMappings.find(optimLevel)->second;
-  // TODO: tiny, but this lookup incurs an extra alloc from char* to string
-  if (funcs.find(std::string(funcname)) == funcs.end() &&
-      optimLevel != OptimLevel::DEFAULT) {
-    // Not in the excluded list - cast to f16
-    res = in.astype(fl::dtype::f16);
-  } else {
-    // Upcast to f32 only if we have an f16 input - otherwise, leave as is
-    if (in.type() == fl::dtype::f16) {
-      res = in.astype(fl::dtype::f32);
-    } else {
-      res = in;
-    }
-  }
-
-  return res;
-}
-
-template <typename H, typename... T>
-std::shared_ptr<AutogradPayload> createAutogradPayload(H head, T... tail) {
-  return (head.isCalcGrad() || ... || tail.isCalcGrad())
-      ? std::make_shared<AutogradPayload>()
-      : nullptr;
-}
+FL_API Tensor autogradAdd(const Tensor& lhs, const Tensor& rhs);
+FL_API Tensor autogradAdd(const Tensor& lhs, double rhs);
+FL_API Tensor autogradSub(const Tensor& lhs, const Tensor& rhs);
+FL_API Tensor autogradSub(const Tensor& lhs, double rhs);
+FL_API Tensor autogradSub(double lhs, const Tensor& rhs);
+FL_API Tensor autogradMul(const Tensor& lhs, const Tensor& rhs);
+FL_API Tensor autogradMul(const Tensor& lhs, double rhs);
+FL_API Tensor autogradDiv(const Tensor& lhs, const Tensor& rhs);
+FL_API Tensor autogradDiv(const Tensor& lhs, double rhs);
+FL_API Tensor autogradDiv(double lhs, const Tensor& rhs);
 
 } // namespace detail
 
 /**
- * Adjusts the input type to operators based on the optimization mode and the
- * operator name.
+ * Checks if a variadic number of Tensors have the same types.
  */
-#define FL_ADJUST_INPUT_TYPE(INPUT) detail::adjustInputType(INPUT, __func__)
-
-/**
- * Checks if a variadic number of Variables have the same types.
- */
-#define FL_VARIABLE_DTYPES_MATCH_CHECK(...)              \
-  if (!detail::areVariableTypesEqual(__VA_ARGS__)) {     \
+#define FL_DTYPES_MATCH_CHECK(...)              \
+  if (!detail::areDtypesEqual(__VA_ARGS__)) {     \
     throw std::invalid_argument(                         \
         std::string(__func__) +                          \
         " doesn't support binary "                       \
-        "operations with Variables of different types"); \
+        "operations with Tensors of different types"); \
   }
 
 /**
@@ -112,221 +79,82 @@ std::shared_ptr<AutogradPayload> createAutogradPayload(H head, T... tail) {
  * @{
  */
 
-/**
- * Element-wise addition of two Variables.
- * \f[ out = var_1 + var_2 \f]
- */
-FL_API Variable operator+(const Variable& lhs, const Variable& rhs);
+// Arithmetic operators (+, -, *, /) are defined on Tensor in
+// fl/tensor/Tensor.cpp but dispatch to autograd::detail::autograd*()
+// (below) when either operand requires grad. Comparison and logical operators
+// are non-differentiable and defined directly on Tensor.
 
 /**
- * Adds a scalar to each element in the Variable.
- * \f[ out_i = value + var_i \f]
- */
-FL_API Variable operator+(const double& lhs, const Variable& rhs);
-
-/**
- * Adds a scalar to each element in the Variable.
- * \f[ out_i = var_i + value \f]
- */
-FL_API Variable operator+(const Variable& lhs, const double& rhs);
-
-/**
- * Element-wise multiplication of two Variables.
- * \f[ out = var_1 \times var_2 \f]
- */
-FL_API Variable operator*(const Variable& lhs, const Variable& rhs);
-
-/**
- * Multiplies each element in the Variable by a scalar.
- * \f[ out_i = value \times var_i \f]
- */
-FL_API Variable operator*(const double& lhs, const Variable& rhs);
-
-/**
- * Multiplies each element in the Variable by a scalar.
- * \f[ out_i = var_i \times value \f]
- */
-FL_API Variable operator*(const Variable& lhs, const double& rhs);
-
-/**
- * Element-wise subtraction of two Variables.
- * \f[ out = var_1 - var_2 \f]
- */
-FL_API Variable operator-(const Variable& lhs, const Variable& rhs);
-
-/**
- * Subtracts a scalar from each element in the Variable.
- * \f[ out_i = var_i - value \f]
- */
-FL_API Variable operator-(const double& lhs, const Variable& rhs);
-
-/**
- * Subtracts each element in the Variable from a scalar.
- * \f[ out_i = value - var_i \f]
- */
-FL_API Variable operator-(const Variable& lhs, const double& rhs);
-
-/**
- * Element-wise division of two Variables.
- * \f[ out = \frac{var_1}{var_2} \f]
- */
-FL_API Variable operator/(const Variable& lhs, const Variable& rhs);
-
-/**
- * Divides each element in the Variable by a scalar.
- * \f[ out_i = \frac{var_i}{value} \f]
- */
-FL_API Variable operator/(const double& lhs, const Variable& rhs);
-
-/**
- * Divides a scalar by each element in the Variable.
- * \f[ out_i = \frac{value}{var_i} \f]
- */
-FL_API Variable operator/(const Variable& lhs, const double& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of two Variables.
- * \f[ out = var_1 > var_2 \f]
- */
-FL_API Variable operator>(const Variable& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = value > var_i \f]
- */
-FL_API Variable operator>(const double& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = var_i > value \f]
- */
-FL_API Variable operator>(const Variable& lhs, const double& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of two Variables.
- * \f[ out = var_1 < var_2 \f]
- */
-FL_API Variable operator<(const Variable& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = value < var_i \f]
- */
-FL_API Variable operator<(const double& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = var_i < value \f]
- */
-FL_API Variable operator<(const Variable& lhs, const double& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of two Variables.
- * \f[ out = var_1 >= var_2 \f]
- */
-FL_API Variable operator>=(const Variable& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = value >= var_i \f]
- */
-FL_API Variable operator>=(const double& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = var_i >= value \f]
- */
-FL_API Variable operator>=(const Variable& lhs, const double& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of two Variables.
- * \f[ out = var_1 <= var_2 \f]
- */
-FL_API Variable operator<=(const Variable& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = value <= var_i \f]
- */
-FL_API Variable operator<=(const double& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise comparison of a Variable and a scalar.
- * \f[ out_i = value <= var_i \f]
- */
-FL_API Variable operator<=(const Variable& lhs, const double& rhs);
-
-/**
- * [Non-differentiable] Element-wise logical and of two Variables.
- * \f[ out = var_1 \& var_2 \f]
- */
-FL_API Variable operator&&(const Variable& lhs, const Variable& rhs);
-
-/**
- * [Non-differentiable] Element-wise logical not of a Variable.
- * \f[ out_i = !var_i \f]
- */
-FL_API Variable operator!(const Variable& input);
-
-/**
- * Computes negative of each element in a Variable.
+ * Computes negative of each element in a Tensor.
  * \f[ out_i = -var_i \f]
  */
-FL_API Variable negate(const Variable& input);
+FL_API Tensor negative(const Tensor& input);
 
 /**
- * Computes reciprocal of each element in a Variable.
+ * Computes reciprocal of each element in a Tensor.
  * \f[ out_i = \frac{1}{var_i} \f]
  */
-FL_API Variable reciprocal(const Variable& input);
+FL_API Tensor reciprocal(const Tensor& input);
 
 /**
- * Computes exponential of each element in a Variable.
+ * Computes exponential of each element in a Tensor.
  * \f[ out_i = e^{var_i} \f]
  */
-FL_API Variable exp(const Variable& input);
+FL_API Tensor exp(const Tensor& input);
 
 /**
- * Computes natural logarithm of each element in a Variable.
+ * Computes natural logarithm of each element in a Tensor.
  * \f[ out_i = log(var_i) \f]
  */
-FL_API Variable log(const Variable& input);
+FL_API Tensor log(const Tensor& input);
 
 /**
- * Computes power of each element in a Variable.
+ * Computes power of each element in a Tensor.
  * \f[ out_i = var_i^p \f]
  */
-FL_API Variable pow(const Variable& input, double p);
+FL_API Tensor power(const Tensor& input, double p);
 
 /**
- * Computes natural logarithm of (1 + element) for each element in a Variable.
+ * Computes element-wise power of two Variables.
+ * \f[ out_i = base_i^{exp_i} \f]
+ */
+FL_API Tensor power(const Tensor& base, const Tensor& exp);
+
+/**
+ * Computes element-wise power of a scalar base raised to Tensor exponents.
+ * \f[ out_i = base^{exp_i} \f]
+ */
+FL_API Tensor power(const double& base, const Tensor& exp);
+
+/**
+ * Computes natural logarithm of (1 + element) for each element in a Tensor.
  * \f[ out_i = log(1.0 + var_i) \f]
  */
-FL_API Variable log1p(const Variable& input);
+FL_API Tensor log1p(const Tensor& input);
 
 /**
- * Computes sine of each element in a Variable.
+ * Computes sine of each element in a Tensor.
  * \f[ out_i = sin(var_i) \f]
  */
-FL_API Variable sin(const Variable& input);
+FL_API Tensor sin(const Tensor& input);
 
 /**
- * Computes cosine of each element in a Variable.
+ * Computes cosine of each element in a Tensor.
  * \f[ out_i = cos(var_i) \f]
  */
-FL_API Variable cos(const Variable& input);
+FL_API Tensor cos(const Tensor& input);
 
 /**
- * Computes square root of each element in a Variable.
+ * Computes square root of each element in a Tensor.
  * \f[ out_i = \sqrt{var_i} \f]
  */
-FL_API Variable sqrt(const Variable& input);
+FL_API Tensor sqrt(const Tensor& input);
 
 /**
- * Computes hyperbolic tangent of each element in a Variable.
+ * Computes hyperbolic tangent of each element in a Tensor.
  * \f[ out_i = \frac{\exp(var_i) - \exp(-var_i)}{\exp(var_i) + \exp(-var_i)} \f]
  */
-FL_API Variable tanh(const Variable& input);
+FL_API Tensor tanh(const Tensor& input);
 
 /**
  * Clamps all elements in input into the range [ `min`, `max` ] and return a
@@ -337,93 +165,93 @@ FL_API Variable tanh(const Variable& input);
  *     \text{max} & \text{if } x_i > \text{max}
  *     \end{cases}\end{split} \f]
  */
-FL_API Variable
-clamp(const Variable& input, const double min, const double max);
+FL_API Tensor
+clip(const Tensor& input, const double min, const double max);
 
 /**
- * Computes sigmoid of each element in a Variable.
+ * Computes sigmoid of each element in a Tensor.
  * \f[ out_i = \frac{1}{1 + \exp(-var_i)} \f]
  */
-FL_API Variable sigmoid(const Variable& input);
+FL_API Tensor sigmoid(const Tensor& input);
 
 /**
- * Computes swish of each element in a Variable
+ * Computes swish of each element in a Tensor
  * from [Ramachandran et al (2013)](
  * https://arxiv.org/abs/1710.05941), _Searching for Activation Functions_.
  * \f[ Swish(x) = x \cdot sigmoid(\beta x) \f]
  * where \f$\beta\f$ is a constant, often is 1.
  */
-FL_API Variable swish(const Variable& input, double beta);
+FL_API Tensor swish(const Tensor& input, double beta);
 
 /**
- * Computes the error function of each element in a Variable
+ * Computes the error function of each element in a Tensor
  * from as in [here](https://en.wikipedia.org/wiki/Error_function)
  */
-FL_API Variable erf(const Variable& input);
+FL_API Tensor erf(const Tensor& input);
 
 /**
  * Returns element-wise maximum value of two Variables.
- * \f[ out = max(var_1, var_2) \f]
+ * \f[ out = maximum(var_1, var_2) \f]
  */
-FL_API Variable max(const Variable& lhs, const Variable& rhs);
+FL_API Tensor maximum(const Tensor& lhs, const Tensor& rhs);
 
 /**
- * Returns maximum value of a scalar and each element in a Variable.
- * \f[ out_i = max(var_i, value) \f]
+ * Returns maximum value of a scalar and each element in a Tensor.
+ * \f[ out_i = maximum(var_i, value) \f]
  */
-FL_API Variable max(const Variable& lhs, const double& rhs);
+FL_API Tensor maximum(const Tensor& lhs, const double& rhs);
 
 /**
- * Returns maximum value of a scalar and each element in a Variable.
- * \f[ out_i = max(value, var_i) \f]
+ * Returns maximum value of a scalar and each element in a Tensor.
+ * \f[ out_i = maximum(value, var_i) \f]
  */
-FL_API Variable max(const double& lhs, const Variable& rhs);
+FL_API Tensor maximum(const double& lhs, const Tensor& rhs);
 
 /**
  * Returns element-wise minimum value of two Variables.
- * \f[ out = min(var_1, var_2) \f]
+ * \f[ out = minimum(var_1, var_2) \f]
  */
-FL_API Variable min(const Variable& lhs, const Variable& rhs);
+FL_API Tensor minimum(const Tensor& lhs, const Tensor& rhs);
 
 /**
- * Returns minimum value of a scalar and each element in a Variable.
- * \f[ out_i = min(var_i, value) \f]
+ * Returns minimum value of a scalar and each element in a Tensor.
+ * \f[ out_i = minimum(var_i, value) \f]
  */
-FL_API Variable min(const Variable& lhs, const double& rhs);
+FL_API Tensor minimum(const Tensor& lhs, const double& rhs);
 
 /**
- * Returns minimum value of a scalar and each element in a Variable.
- * \f[ out_i = min(value, var_i) \f]
+ * Returns minimum value of a scalar and each element in a Tensor.
+ * \f[ out_i = minimum(value, var_i) \f]
  */
-FL_API Variable min(const double& lhs, const Variable& rhs);
+FL_API Tensor minimum(const double& lhs, const Tensor& rhs);
 
 /**
- * Returns a tensor that is a transposed version of a Variable. Reorders the
+ * Returns a tensor that is a transposed version of a Tensor. Reorders the
  * input based on the shape of the input dimensions. If left empty, transposes
  * over all dimensinos (reverses all dimensions).
  */
-FL_API Variable transpose(const Variable& input, const Shape& dims = {});
+FL_API Tensor transpose(const Tensor& input, const Shape& dims = {});
 
 /**
  * Repeats the tensor `input` along certain dimensions so as to match the shape
  * of `reference`. The dimensions to be repeated along are automatically
  * inferred.
  */
-FL_API Variable tileAs(const Variable& input, const Variable& reference);
+FL_API Tensor tileAs(const Tensor& input, const Tensor& reference);
 
 /**
  * Repeats the tensor `input` along certain dimensions so as to match the shape
  * in the descriptor `rdims`. The dimensions to be repeated along are
  * automatically inferred.
  */
-FL_API Variable tileAs(const Variable& input, const Shape& rdims);
+FL_API Tensor tileAs(const Tensor& input, const Shape& rdims);
 
 /**
  * Sums up the tensor `input` along certain dimensions so as to match the shape
  * of `reference`. The dimensions to be summed along are automatically inferred.
  * Note that after summation, the shape of those dimensions will be 1.
  */
-FL_API Variable sumAs(const Variable& input, const Variable& reference);
+FL_API Tensor sumAs(const Tensor& input, const Tensor& reference);
 
 /**
  * Sums up the tensor `input` along certain dimensions so as to match the shape
@@ -431,68 +259,57 @@ FL_API Variable sumAs(const Variable& input, const Variable& reference);
  * automatically inferred. Note that after summation, the shape of those
  * dimensions will be 1.
  */
-FL_API Variable sumAs(const Variable& input, const Shape& rdims);
+FL_API Tensor sumAs(const Tensor& input, const Shape& rdims);
 
 /**
- * Concatenates Variables along a specific dimension. The shape of input
- * Variables should be identical except the dimension to concatenate.
+ * Concatenates Variables along a specific axis. The shape of input
+ * Variables should be identical except the axis to concatenate.
  */
-FL_API Variable concatenate(const std::vector<Variable>& concatInputs, int dim);
+FL_API Tensor
+concatenate(const std::vector<Tensor>& concatInputs, unsigned axis = 0);
 
 /**
- * Splits a Variable into equally sized chunks (if possible)
+ * Splits a Tensor into equally sized chunks (if possible)
  *
- * @param input a Variable to split
+ * @param input a Tensor to split
  * @param splitSize size of each split. If input dimension is not evenly
  * divisible, last chunk of smaller splitSize will be included.
- * @param dim dimension along which to split the Variable
+ * @param dim dimension along which to split the Tensor
  */
-FL_API std::vector<Variable>
-split(const Variable& input, long splitSize, int dim);
+FL_API std::vector<Tensor>
+split(const Tensor& input, long splitSize, int dim);
 
 /**
- * Splits a Variable into smaller chunks.
+ * Splits a Tensor into smaller chunks.
  *
- * @param input a Variable to split
+ * @param input a Tensor to split
  * @param splitSizes vector of integers specifying the sizes for each split
- * @param dim dimension along which to split the Variable
+ * @param dim dimension along which to split the Tensor
  */
-FL_API std::vector<Variable>
-split(const Variable& input, const std::vector<long>& splitSizes, int dim);
+FL_API std::vector<Tensor>
+split(const Tensor& input, const std::vector<long>& splitSizes, int dim);
 
 /**
  * Repeats the tensor `input` along specific dimensions. The number of
  * repetition along each dimension is specified in descriptor `dims`.
  */
-FL_API Variable tile(const Variable& input, const Shape& dims);
-
-/**
- * Repeats the tensor `input` along specific dimensions. The number of
- * repetition along each dimension is specified in descriptor `dims`.
- *
- * @param[in] precision Type of the output vector when is it is desired to
- * be different from the input type. This is particularly useful when tile is
- * applied on parameters and the results will be used in a half precision
- * arithmetic.
- */
-FL_API Variable
-tile(const Variable& input, const Shape& dims, const fl::dtype precision);
+FL_API Tensor tile(const Tensor& input, const Shape& dims);
 
 /**
  * Sums up the tensors `input` along dimensions specified in descriptor `axes`.
  * If `axes` has size greater than 1, reduce over all of them.
  */
-FL_API Variable
-sum(const Variable& input, const std::vector<int>& axes, bool keepDims = false);
+FL_API Tensor
+sum(const Tensor& input, const std::vector<int>& axes = {}, bool keepDims = false);
 
 /**
  * Computes the mean of the tensor `input` along dimensions specified in
  * descriptor `axes`. If `axes` has size greater than 1, reduce over all of
  * them.
  */
-FL_API Variable mean(
-    const Variable& input,
-    const std::vector<int>& axes,
+FL_API Tensor mean(
+    const Tensor& input,
+    const std::vector<int>& axes = {},
     bool keepDims = false);
 
 /**
@@ -502,9 +319,9 @@ FL_API Variable mean(
  * @param p the p value of the Lp norm.
  * @param axes dimensions over which the reduction is performed.
  */
-FL_API Variable norm(
-    const Variable& input,
-    const std::vector<int>& axes,
+FL_API Tensor norm(
+    const Tensor& input,
+    const std::vector<int>& axes = {},
     double p = 2,
     bool keepDims = false);
 
@@ -516,8 +333,8 @@ FL_API Variable norm(
  * @param p the p value of the Lp norm.
  * @param eps clamping value to avoid overflows.
  */
-FL_API Variable normalize(
-    const Variable& input,
+FL_API Tensor normalize(
+    const Tensor& input,
     const std::vector<int>& axes,
     double p = 2,
     double eps = 1e-12);
@@ -525,99 +342,159 @@ FL_API Variable normalize(
 /**
  * Computes variance of the tensor `input` along dimensions specified in
  * descriptor `axes`. If `axes` has size greater than 1, reduce over all of
- * them. Uses population variance if `isbiased` is `true`, otherwise, uses
- * sample variance.
- *
- * NB: the behavior of `fl::var` differs from that of `af::var`. In ArrayFire
- * versions >= 3.7.0, if `isbiased` is `true` the variance computation uses
- * sample variance; if `false`, population variance is used. For versions of
- * ArrayFire before v3.7.0, the reverse is true.
- * TODO:{fl::Tensor} -- make this behavior consistent
+ * them. If `bias` is `true`, applies Bessel's correction (divides by N-1,
+ * sample variance). Otherwise divides by N (population variance).
  */
-FL_API Variable
-var(const Variable& input,
-    const std::vector<int>& axes,
-    const bool isbiased = false,
+FL_API Tensor
+var(const Tensor& input,
+    const std::vector<int>& axes = {},
+    const bool bias = false,
     bool keepDims = false);
 
 /**
- * Conducts matrix-matrix multiplication on two Variables. This is a batched
- * function if \f$B_1\f$ or \f$B_2\f$ is greater than 1.
-
- * @param lhs a Variable with shape [\f$M\f$, \f$N\f$, \f$B_1\f$, \f$B_2\f$]
- * @param rhs a Variable with shape [\f$N\f$, \f$K\f$, \f$B_1\f$, \f$B_2\f$]
- * @return a Variable with shape [\f$M\f$, \f$K\f$, \f$B_1\f$, \f$B_2\f$]
+ * Computes standard deviation of the tensor `input` along dimensions
+ * specified in descriptor `axes`. Equivalent to `sqrt(var(...))`.
  */
-FL_API Variable matmul(const Variable& lhs, const Variable& rhs);
+FL_API Tensor
+std(const Tensor& input,
+    const std::vector<int>& axes = {},
+    const bool bias = false,
+    bool keepDims = false);
 
 /**
- * Conducts matrix-matrix multiplication on two Variables, where the first one
- * will be transposed before multiplication. This is a batched function if
- * \f$B_1\f$ or \f$B_2\f$ is greater than 1.
+ * Conducts matrix-matrix multiplication on two Variables, optionally
+ * transposing either input. This is a batched function if \f$B_1\f$ or
+ * \f$B_2\f$ is greater than 1.
 
- * @param lhs a Variable with shape [\f$N\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
- * @param rhs a Variable with shape [\f$N\f$, \f$K\f$, \f$B_1\f$, \f$B_2\f$]
- * @return a Variable with shape [\f$M\f$, \f$K\f$, \f$B_1\f$, \f$B_2\f$]
+ * @param lhs the left-hand side Tensor
+ * @param rhs the right-hand side Tensor
+ * @param lhsProp the MatrixProperty to apply to lhs (None or Transpose)
+ * @param rhsProp the MatrixProperty to apply to rhs (None or Transpose)
+ * @return the result of the matrix multiplication
  */
-FL_API Variable matmulTN(const Variable& lhs, const Variable& rhs);
+FL_API Tensor matmul(
+    const Tensor& lhs,
+    const Tensor& rhs,
+    MatrixProperty lhsProp = MatrixProperty::None,
+    MatrixProperty rhsProp = MatrixProperty::None);
 
 /**
- * Conducts matrix-matrix multiplication on two Variables, where the second one
- * will be transposed before multiplication. This is a batched function if
- * \f$B_1\f$ or \f$B_2\f$ is greater than 1.
-
- * @param lhs a Variable with shape [\f$M\f$, \f$N\f$, \f$B_1\f$, \f$B_2\f$]
- * @param rhs a Variable with shape [\f$K\f$, \f$N\f$, \f$B_1\f$, \f$B_2\f$]
- * @return a Variable with shape [\f$M\f$, \f$K\f$, \f$B_1\f$, \f$B_2\f$]
- */
-FL_API Variable matmulNT(const Variable& lhs, const Variable& rhs);
-
-/**
- * Returns the absolute values of each element in a Variable.
+ * Returns the absolute values of each element in a Tensor.
  * \f[ out_i = |var_i| \f]
  */
-FL_API Variable abs(const Variable& input);
+FL_API Tensor abs(const Tensor& input);
 
 /**
  * Flattens the input to a single dimension.
  */
-FL_API Variable flat(const Variable& input);
+FL_API Tensor flatten(const Tensor& input);
 
 /**
- * Modifies the input dimensions without changing the data order. The shape of
- * the output Variable is specified in descriptor `dims`.
+ * Reshapes a Tensor without changing the data order. The shape of
+ * the output Tensor is specified in descriptor `dims`.
  */
-FL_API Variable moddims(const Variable& input, const Shape& dims);
+FL_API Tensor reshape(const Tensor& input, const Shape& dims);
 
 /**
- * Exchanges data of an array such that the requested change in dimension is
- * satisfied. The linear ordering of data within the array is preserved.
+ * Remove all dimensions of size 1 from a Tensor, or a specific size-1
+ * dimension.
  */
-FL_API Variable reorder(const Variable& input, const Shape& shape);
+FL_API Tensor squeeze(const Tensor& input);
+FL_API Tensor squeeze(const Tensor& input, const unsigned axis);
 
 /**
- * Applies a linear transformation to the input Variable:
+ * Insert a dimension of size 1 at the specified axis.
+ */
+FL_API Tensor unsqueeze(const Tensor& input, const unsigned axis);
+
+/**
+ * Selects elements from `x` or `y` based on `condition`.
+ * \f[ out_i = condition_i ? x_i : y_i \f]
+ * Gradient flows through the selected branch.
+ */
+FL_API Tensor
+where(const Tensor& condition, const Tensor& x, const Tensor& y);
+
+/**
+ * Reverses the elements of a Tensor along a dimension.
+ */
+FL_API Tensor flip(const Tensor& input, const unsigned dim);
+
+/**
+ * Extracts the lower triangular part of the last two dimensions.
+ */
+FL_API Tensor tril(const Tensor& input, int diagonal = 0);
+
+/**
+ * Extracts the upper triangular part of the last two dimensions.
+ */
+FL_API Tensor triu(const Tensor& input, int diagonal = 0);
+
+/**
+ * Computes the cumulative sum of elements along a dimension.
+ */
+FL_API Tensor cumsum(const Tensor& input, const unsigned axis);
+
+/**
+ * Shifts elements of a Tensor along a given axis by a given shift amount,
+ * wrapping around the end.
+ */
+FL_API Tensor roll(const Tensor& input, int shift, unsigned axis);
+
+/**
+ * [Non-differentiable] Returns the element-wise floor of the input.
+ */
+FL_API Tensor floor(const Tensor& input);
+
+/**
+ * [Non-differentiable] Returns the element-wise ceiling of the input.
+ */
+FL_API Tensor ceil(const Tensor& input);
+
+/**
+ * [Non-differentiable] Returns the element-wise rounding of the input.
+ */
+FL_API Tensor rint(const Tensor& input);
+
+/**
+ * [Non-differentiable] Returns the element-wise sign of the input.
+ */
+FL_API Tensor sign(const Tensor& input);
+
+/**
+ * [Non-differentiable] Returns whether each element is NaN.
+ */
+FL_API Tensor isnan(const Tensor& input);
+
+/**
+ * [Non-differentiable] Returns whether each element is infinite.
+ */
+FL_API Tensor isinf(const Tensor& input);
+
+
+/**
+ * Applies a linear transformation to the input Tensor:
  * \f[
  *    y = Ax
  * \f]
- * @param input a Variable with shape [\f$N\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
- * @param weight a Variable with shape [\f$K\f$, \f$N\f$]
- * @return a Variable with shape [\f$K\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
+ * @param input a Tensor with shape [\f$N\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
+ * @param weight a Tensor with shape [\f$K\f$, \f$N\f$]
+ * @return a Tensor with shape [\f$K\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
  */
-FL_API Variable linear(const Variable& input, const Variable& weight);
+FL_API Tensor linear(const Tensor& input, const Tensor& weight);
 
 /**
- * Applies a linear transformation to the input Variable:
+ * Applies a linear transformation to the input Tensor:
  * \f[
  *    y = Ax + b
  * \f]
- * @param input a Variable with shape [\f$N\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
- * @param weight a Variable with shape [\f$K\f$, \f$N\f$]
- * @param bias a Variable with shape [\f$K\f$]
- * @return a Variable with shape [\f$K\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
+ * @param input a Tensor with shape [\f$N\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
+ * @param weight a Tensor with shape [\f$K\f$, \f$N\f$]
+ * @param bias a Tensor with shape [\f$K\f$]
+ * @return a Tensor with shape [\f$K\f$, \f$M\f$, \f$B_1\f$, \f$B_2\f$]
  */
-FL_API Variable
-linear(const Variable& input, const Variable& weight, const Variable& bias);
+FL_API Tensor
+linear(const Tensor& input, const Tensor& weight, const Tensor& bias);
 
 /**
  * Applies a 2D convolution over an input signal given filter weights. In the
@@ -631,9 +508,9 @@ linear(const Variable& input, const Variable& weight, const Variable& bias);
           \text{input}(k, N_i)
  * \f]
 
- * @param input a Variable with shape [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C_{in}\f$,
+ * @param input a Tensor with shape [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C_{in}\f$,
  * \f$N\f$]
- * @param weights a Variable with shape [\f$K_x\f$, \f$K_y\f$, \f$C_{in}\f$,
+ * @param weights a Tensor with shape [\f$K_x\f$, \f$K_y\f$, \f$C_{in}\f$,
  * \f$C_{out}\f$]
  * @param sx stride in the first dimension
  * @param sy stride in the second dimension
@@ -646,73 +523,40 @@ linear(const Variable& input, const Variable& weight, const Variable& bias);
  * @param dy dilation along the second kernel dimension. A dilation of 1
  * is equivalent to a standard convolution along this axis.
  * @param groups number of filter groups
- * @param benchmarks [optional] a `ConvBenchmarks` instance to use to
- * dynamically benchmark configuration attributes for computations.
- * @return a Variable with shape [\f$X_{out}\f$, \f$Y_{out}\f$, \f$C_{out}\f$,
+ * @return a Tensor with shape [\f$X_{out}\f$, \f$Y_{out}\f$, \f$C_{out}\f$,
  * \f$N\f$]]
  */
-FL_API Variable conv2d(
-    const Variable& input,
-    const Variable& weights,
+FL_API Tensor conv2d(
+    const Tensor& input,
+    const Tensor& weights,
     int sx = 1,
     int sy = 1,
     int px = 0,
     int py = 0,
     int dx = 1,
     int dy = 1,
-    int groups = 1,
-    std::shared_ptr<detail::ConvBenchmarks> benchmarks = nullptr);
+    int groups = 1);
 
 /**
  * Applies a 2D convolution over an input signal given filter weights and
- * biases. In the simplest case, the output with shape [\f$X_{out}\f$,
- * \f$Y_{out}\f$, \f$C_{out}\f$, \f$N\f$] of the convolution with input
- * [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C_{in}\f$, \f$N\f$] and weight [\f$K_x\f$,
- * \f$K_y\f$, \f$C_{in}\f$, \f$C_{out}\f$] can be precisely described as:
- * \f[
-      \text{out}(C_{out_j}, N_i) =
-          \text{bias}(C_{out_j}) +
-          \sum_{k = 0}^{C_{in} - 1} \text{weight}(k, C_{out_j}) \star
-          \text{input}(k, N_i)
- * \f]
-
- * @param input a Variable with shape [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C_{in}\f$,
- * \f$N\f$]
- * @param weights a Variable with shape [\f$K_x\f$, \f$K_y\f$, \f$C_{in}\f$,
- * \f$C_{out}\f$]
- * @param sx stride in the first dimension
- * @param sy stride in the second dimension
- * @param px number of positions of zero-padding on both sides in the first
- * dimension
- * @param py number of positions of zero-padding on both sides in the second
- * dimension
- * @param dx dilation along the first kernel dimension. A dilation of 1
- * is equivalent to a standard convolution along this axis.
- * @param dy dilation along the second kernel dimension. A dilation of 1
- * is equivalent to a standard convolution along this axis.
- * @param groups number of filter groups
- * @param benchmarks [optional] a `ConvBenchmarks` instance to use to
- * dynamically benchmark configuration attributes for computations.
- * @param bias a Variable with shape [\f$C_{out}\f$]
- * @return a Variable with shape [\f$X_{out}\f$, \f$Y_{out}\f$, \f$C_{out}\f$,
- * \f$N\f$]]
+ * biases.
+ * @param bias a Tensor with shape [\f$C_{out}\f$]
  */
-FL_API Variable conv2d(
-    const Variable& input,
-    const Variable& weights,
-    const Variable& bias,
+FL_API Tensor conv2d(
+    const Tensor& input,
+    const Tensor& weights,
+    const Tensor& bias,
     int sx = 1,
     int sy = 1,
     int px = 0,
     int py = 0,
     int dx = 1,
     int dy = 1,
-    int groups = 1,
-    std::shared_ptr<detail::ConvBenchmarks> benchmarks = nullptr);
+    int groups = 1);
 
 /**
  * Applies a 2D pooling over an input signal composed of several input planes.
- * @param input a Variable with shape [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C\f$,
+ * @param input a Tensor with shape [\f$X_{in}\f$, \f$Y_{in}\f$, \f$C\f$,
  *   \f$N\f$]
  * @param wx pooling window size in the first dimension
  * @param wy pooling window size in the second dimension
@@ -727,8 +571,8 @@ FL_API Variable conv2d(
  * - AVG_INCLUDE_PADDING
  * - AVG_EXCLUDE_PADDING
  */
-FL_API Variable pool2d(
-    const Variable& input,
+FL_API Tensor pool2d(
+    const Tensor& input,
     int wx,
     int wy,
     int sx = 1,
@@ -738,20 +582,20 @@ FL_API Variable pool2d(
     PoolingMode mode = PoolingMode::MAX);
 
 /**
- * Applies a softmax function on Variable `input` along dimension `dim`, so that
+ * Applies a softmax function on Tensor `input` along dimension `dim`, so that
  * the elements of the dimensional `dim` in output lie in the range (0,1) and
  * sum to 1.
  * \f[ out(x_{i}) = \frac{exp(x_i)}{\sum_j exp(x_j)} \f]
  */
-FL_API Variable softmax(const Variable& input, const int dim);
+FL_API Tensor softmax(const Tensor& input, const int dim);
 
 /**
- * Applies a log(softmax(x)) function on Variable `input` along dimension `dim`
+ * Applies a log(softmax(x)) function on Tensor `input` along dimension `dim`
  * \f[
  *    out(x_{i}) = log \Big( \frac{exp(x_i)}{\sum_j exp(x_j)} \Big)
  * \f]
  */
-FL_API Variable logSoftmax(const Variable& input, const int dim);
+FL_API Tensor logSoftmax(const Tensor& input, const int dim);
 
 /**
  * Computes the binary cross entropy loss between an input tensor \f$x\f$ and a
@@ -765,8 +609,8 @@ FL_API Variable logSoftmax(const Variable& input, const int dim);
  * @param inputs a tensor with the predicted values
  * @param targets a tensor with the target values
  */
-FL_API Variable
-binaryCrossEntropy(const Variable& inputs, const Variable& targets);
+FL_API Tensor
+binaryCrossEntropy(const Tensor& inputs, const Tensor& targets);
 
 /**
  * Computes the categorical cross entropy loss. The input is expected to
@@ -783,9 +627,9 @@ binaryCrossEntropy(const Variable& inputs, const Variable& targets);
  *   \end{cases}\end{split}
  * \f]
 
- * @param input a `Variable` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
+ * @param input a `Tensor` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
  * \f$B_3\f$] where \f$C\f$ is the number of classes.
- * @param targets an integer `Variable` with shape [\f$B_1\f$, \f$B_2\f$,
+ * @param targets an integer `Tensor` with shape [\f$B_1\f$, \f$B_2\f$,
  * \f$B_3\f$]. The values must be in \f$[0, C - 1]\f$
  * @param reduction reduction mode, which supports:
  * - NONE
@@ -795,12 +639,12 @@ binaryCrossEntropy(const Variable& inputs, const Variable& targets);
  * to the loss or the input gradient. If `reduce` is MEAN, the loss is
  * averaged over non-ignored targets. Only indicies in \f$[0, C - 1]\f$ are
  * considered to be valid.
- * @return a `Variable` of loss value with shape scalar by default. If `reduce`
+ * @return a `Tensor` of loss value with shape scalar by default. If `reduce`
  * is NONE, then [\f$B_1\f$, \f$B_2\f$, \f$B_3\f$].
  */
-FL_API Variable categoricalCrossEntropy(
-    const Variable& input,
-    const Variable& targets,
+FL_API Tensor categoricalCrossEntropy(
+    const Tensor& input,
+    const Tensor& targets,
     ReduceMode reduction = ReduceMode::MEAN,
     int ignoreIndex = -1);
 
@@ -813,20 +657,20 @@ FL_API Variable categoricalCrossEntropy(
  *   {\sum_{n=1}^N weight[y_n]
  * \f]
 
- * @param input a `Variable` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
+ * @param input a `Tensor` with shape [\f$C\f$, \f$B_1\f$, \f$B_2\f$,
  * \f$B_3\f$] where \f$C\f$ is the number of classes.
- * @param targets an integer `Variable` with shape [\f$B_1\f$, \f$B_2\f$,
+ * @param targets an integer `Tensor` with shape [\f$B_1\f$, \f$B_2\f$,
  * The values must be in \f$[0, C - 1]\f$.
- * @param weights an `Variable` with shape f$[0, C - 1]\f.
+ * @param weights an `Tensor` with shape f$[0, C - 1]\f.
  * @param ignoreIndex a target value that is ignored and does not contribute
  * to the loss or the input gradient. If `reduce` is MEAN, the loss is
  * averaged over non-ignored targets. Only indicies in \f$[0, C - 1]\f$ are
  * considered to be valid.
- * @return a `Variable` of loss value with shape scalar by default.  */
-FL_API Variable weightedCategoricalCrossEntropy(
-    const Variable& input,
-    const Variable& targets,
-    const Variable& weight,
+ * @return a `Tensor` of loss value with shape scalar by default.  */
+FL_API Tensor weightedCategoricalCrossEntropy(
+    const Tensor& input,
+    const Tensor& targets,
+    const Tensor& weight,
     int ignoreIndex);
 
 /**
@@ -838,10 +682,10 @@ FL_API Variable weightedCategoricalCrossEntropy(
  * See [Language Modeling with Gated Convolutional Networks]
  * (https://arxiv.org/abs/1612.08083).
 
- * @param input input Variable
+ * @param input input Tensor
  * @param dim dimension on which to split the input
  */
-FL_API Variable gatedlinearunit(const Variable& input, const int dim);
+FL_API Tensor gatedlinearunit(const Tensor& input, const int dim);
 
 /**
  * Applies an RNN unit to an input sequence.
@@ -856,11 +700,11 @@ FL_API Variable gatedlinearunit(const Variable& input, const int dim);
  * the computation is different for each. There is no mapping between weights
  * from each of those backends.}
  *
- * @param input Variable of input with shape [input size, batch size, sequence
+ * @param input Tensor of input with shape [input size, batch size, sequence
  * length]
- * @param hiddenState Variable of hidden state with shape [hidden size, batch
+ * @param hiddenState Tensor of hidden state with shape [hidden size, batch
  * size, total layers]
- * @param cellState [LSTM only] Variable of cell state with same shape as
+ * @param cellState [LSTM only] Tensor of cell state with same shape as
  * hidden state
  * @param weights Learnable parameters in the RNN unit
  * @param hiddenSize number of features in the hidden state
@@ -881,11 +725,11 @@ FL_API Variable gatedlinearunit(const Variable& input, const int dim);
  * - `hiddenState`: hidden state for the current time step
  * - `cellState`: cell state for the current time step
  */
-FL_API std::tuple<Variable, Variable, Variable> rnn(
-    const Variable& input,
-    const Variable& hiddenState,
-    const Variable& cellState,
-    const Variable& weights,
+FL_API std::tuple<Tensor, Tensor, Tensor> rnn(
+    const Tensor& input,
+    const Tensor& hiddenState,
+    const Tensor& cellState,
+    const Tensor& weights,
     int hiddenSize,
     int numLayers,
     RnnMode mode,
@@ -894,15 +738,15 @@ FL_API std::tuple<Variable, Variable, Variable> rnn(
 
 /**
  * Looks up embeddings in a fixed dictionary and size.
- * @param input a Variable of a list of indices with shape [\f$B_1\f$,
+ * @param input a Tensor of a list of indices with shape [\f$B_1\f$,
  * \f$B_2\f$, \f$B_3\f$]
- * @param embeddings a Variable of an embedding matrix with shape [\f$D\f$,
+ * @param embeddings a Tensor of an embedding matrix with shape [\f$D\f$,
  * \f$N\f$], where \f$N\f$ is the number of items and \f$D\f$ is the embedding
  * size.
- * @return a Variable of embeddings with shape [\f$D\f$, \f$B_1\f$, \f$B_2\f$,
+ * @return a Tensor of embeddings with shape [\f$D\f$, \f$B_1\f$, \f$B_2\f$,
  * \f$B_3\f$]
  */
-FL_API Variable embedding(const Variable& input, const Variable& embeddings);
+FL_API Tensor embedding(const Tensor& input, const Tensor& embeddings);
 
 /**
  * Applies Batch Normalization over a 4D input (a mini-batch of 2D inputs with
@@ -919,9 +763,9 @@ FL_API Variable embedding(const Variable& input, const Variable& embeddings);
  * running estimates of its computed mean and variance, which are then used for
  * normalization during evaluation.
 
- * @param input a Variable with size [\f$H\f$, \f$W\f$, \f$C\f$, \f$N\f$]
- * @param weight a Variable with size [\f$C\f$] for \f$\gamma\f$
- * @param bias a Variable with size [\f$C\f$] for \f$\beta\f$
+ * @param input a Tensor with size [\f$H\f$, \f$W\f$, \f$C\f$, \f$N\f$]
+ * @param weight a Tensor with size [\f$C\f$] for \f$\gamma\f$
+ * @param bias a Tensor with size [\f$C\f$] for \f$\beta\f$
  * @param runningMean a buffer storing intermediate means during training
  * @param runningVar a buffer storing intermediate variances during training
  * @param axes dimensions to perform normalization on. If having size greater
@@ -930,67 +774,67 @@ FL_API Variable embedding(const Variable& input, const Variable& embeddings);
  * @param momentum value of momentum
  * @param epsilon value of \f$\epsilon\f$
 
- * @return a Variable with same shape as `input`
+ * @return a Tensor with same shape as `input`
  */
-FL_API Variable batchnorm(
-    const Variable& input,
-    const Variable& weight,
-    const Variable& bias,
-    Variable& runningMean,
-    Variable& runningVar,
+FL_API std::tuple<Tensor, Tensor, Tensor> batchnorm(
+    const Tensor& input,
+    const Tensor& weight,
+    const Tensor& bias,
+    const Tensor& runningMean,
+    const Tensor& runningVar,
     const std::vector<int>& axes,
     bool train,
     double momentum,
     double epsilon);
 
 /**
- * Applies asymmetric padding on a Variable `input`.
- * @param input input Variable
- * @param pad a list of integer pairs specifying the positions we want to pad on
- * both sides for each dimension
+ * Applies asymmetric padding on a Tensor `input`.
+ * @param input input Tensor
+ * @param paddings a list of integer pairs specifying the positions we want to
+ * pad on both sides for each dimension
  * @param val padding value
- * @return a padded Variable
+ * @return a padded Tensor
  */
-FL_API Variable padding(
-    const Variable& input,
-    std::vector<std::pair<int, int>> pad,
+FL_API Tensor pad(
+    const Tensor& input,
+    std::vector<std::pair<int, int>> paddings,
     double val);
 
 /**
- * Applies dropout on a Variable `input`.
- * @param input input Variable
+ * Applies dropout on a Tensor `input`.
+ * @param input input Tensor
  * @param p the probability of dropout
- * @return a droped out Variable
+ * @return a droped out Tensor
  */
-FL_API Variable dropout(const Variable& input, double p);
+FL_API Tensor dropout(const Tensor& input, double p);
 
 /**
  * Applies the [rectified linear
  * unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks)) function
- * element-wise to a `Variable`:
+ * element-wise to a `Tensor`:
  * \f[ ReLU(x) = \max(0, x) \f]
  */
-FL_API Variable relu(const Variable& input);
+FL_API Tensor relu(const Tensor& input);
 
 /**
  * Applies the [Gaussian Error linear
  * Unit](https://arxiv.org/abs/1606.08415) function
- * element-wise to a `Variable`
+ * element-wise to a `Tensor`
  */
-FL_API Variable gelu(const Variable& input);
+FL_API Tensor gelu(const Tensor& input);
 
 /**
  * Relative positional embedding for the multihead attention
  * Implementation partially follows https://arxiv.org/pdf/1803.02155.pdf
  */
-FL_API Variable relativePositionalEmbeddingRotate(const Variable& input);
+FL_API Tensor relativePositionalEmbeddingRotate(const Tensor& input);
 
 /**
  * Multihead Attention function
  * For details, see [Vaswani et al (2017)](https://arxiv.org/abs/1706.03762).
- * @param query query Variable of size T x nHeads * headDim x B
- * @param key key Variable of size Time x nHeads * headDim x B
- * @param value value Variable of size Time x nHeads * headDim x B
+ * @param query query Tensor of size T x nHeads * headDim x B
+ * @param key key Tensor of size Time x nHeads * headDim x B
+ * @param value value Tensor of size Time x nHeads * headDim x B
  * @param posEmb if non empty then compute relative
  * positional embedding in additon to standard computations
  * @param mask mask or not future in the computations T x T
@@ -1002,17 +846,17 @@ FL_API Variable relativePositionalEmbeddingRotate(const Variable& input);
  * @param pDropout dropout probability
  * @param offset size of the current output from the decoder used now as input
  */
-FL_API Variable multiheadAttention(
-    const Variable& query,
-    const Variable& key,
-    const Variable& value,
-    const Variable& posEmb,
-    const Variable& mask,
-    const Variable& padMask,
+FL_API Tensor multiheadAttention(
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    const Tensor& posEmb,
+    const Tensor& mask,
+    const Tensor& padMask,
     const int32_t nHeads,
     const double pDropout,
     const int32_t offset = 0);
 
 /** @} */
 
-} // namespace fl
+} // namespace fl::autograd

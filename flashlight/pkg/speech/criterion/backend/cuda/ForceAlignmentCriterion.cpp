@@ -21,8 +21,8 @@ using FAC = fl::lib::cuda::ForceAlignmentCriterion<float>;
 namespace fl::pkg::speech {
 
 static void backward(
-    std::vector<Variable>& inputs,
-    const Variable& gradVar,
+    std::vector<Tensor>& inputs,
+    const Tensor& gradVar,
     int B,
     int T,
     int N,
@@ -38,14 +38,17 @@ static void backward(
         "ForceAlignmentCriterion backward expects two input args");
   }
 
-  const auto& grad = gradVar.tensor();
+  const auto& grad = gradVar;
   Tensor inputGrad({N, T, B}, fl::dtype::f32);
   Tensor transGrad({N, N}, fl::dtype::f32);
 
   {
-    fl::DevicePtr targetRaw(target);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousTarget = target.asContiguousTensor();
+    auto contiguousGrad = grad.asContiguousTensor();
+    fl::DevicePtr targetRaw(contiguousTarget);
     fl::DevicePtr targetSizeRaw(targetSize);
-    fl::DevicePtr gradRaw(grad);
+    fl::DevicePtr gradRaw(contiguousGrad);
     fl::DevicePtr inputGradRaw(inputGrad);
     fl::DevicePtr transGradRaw(transGrad);
     fl::DevicePtr workspaceRaw(workspace);
@@ -60,16 +63,16 @@ static void backward(
         static_cast<float*>(inputGradRaw.get()),
         static_cast<float*>(transGradRaw.get()),
         workspaceRaw.get(),
-        inputs[0].tensor().stream().impl<CUDAStream>().handle());
+        inputs[0].stream().impl<CUDAStream>().handle());
   }
 
-  inputs[0].addGrad(Variable(inputGrad, false));
-  inputs[1].addGrad(Variable(transGrad, false));
+  inputs[0].addGrad(Tensor(inputGrad, false));
+  inputs[1].addGrad(Tensor(transGrad, false));
 }
 
-Variable ForceAlignmentCriterion::forward(
-    const Variable& inputVar,
-    const Variable& targetVar) {
+Tensor ForceAlignmentCriterion::forward(
+    const Tensor& inputVar,
+    const Tensor& targetVar) {
   const auto& transVar = param(0);
   int B = inputVar.dim(2);
   int T = inputVar.dim(1);
@@ -84,20 +87,24 @@ Variable ForceAlignmentCriterion::forward(
     throw std::invalid_argument("FAC: target must be int32");
   }
 
-  const auto& input = inputVar.tensor();
-  const auto& target = targetVar.tensor();
+  const auto& input = inputVar;
+  const auto& target = targetVar;
   const auto& targetSize = getTargetSizeArray(target, T);
-  const auto& trans = transVar.tensor();
+  const auto& trans = transVar;
   Tensor loss({B}, fl::dtype::f32);
   Tensor workspace(
       {static_cast<long long>(FAC::getWorkspaceSize(B, T, N, L))},
       fl::dtype::u8);
 
   {
-    fl::DevicePtr inputRaw(input);
-    fl::DevicePtr targetRaw(target);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousInput = input.asContiguousTensor();
+    auto contiguousTarget = target.asContiguousTensor();
+    auto contiguousTrans = trans.asContiguousTensor();
+    fl::DevicePtr inputRaw(contiguousInput);
+    fl::DevicePtr targetRaw(contiguousTarget);
     fl::DevicePtr targetSizeRaw(targetSize);
-    fl::DevicePtr transRaw(trans);
+    fl::DevicePtr transRaw(contiguousTrans);
     fl::DevicePtr lossRaw(loss);
     fl::DevicePtr workspaceRaw(workspace);
 
@@ -116,10 +123,10 @@ Variable ForceAlignmentCriterion::forward(
         input.stream().impl<CUDAStream>().handle());
   }
 
-  return Variable(
+  return Tensor(
       loss,
       {inputVar.withoutData(), transVar.withoutData()},
-      [=](std::vector<Variable>& inputs, const Variable& gradVar) mutable {
+      [=](std::vector<Tensor>& inputs, const Tensor& gradVar) mutable {
         backward(inputs, gradVar, B, T, N, L, target, targetSize, workspace);
       });
 }
@@ -149,19 +156,22 @@ Tensor ForceAlignmentCriterion::viterbiPath(
   }
 
   const auto& targetSize = getTargetSizeArray(target, T);
-  const auto& trans = transVar.tensor();
+  const auto& trans = transVar;
   Tensor bestPathsVar({T, B}, fl::dtype::s32);
   Tensor workspace(
       {static_cast<long long>(FAC::getWorkspaceSize(B, T, N, L))},
       fl::dtype::u8);
 
   {
-    fl::DevicePtr inputRaw(input);
-    fl::DevicePtr targetRaw(target);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousInput = input.asContiguousTensor();
+    auto contiguousTarget = target.asContiguousTensor();
+    auto contiguousTrans = trans.asContiguousTensor();
+    fl::DevicePtr inputRaw(contiguousInput);
+    fl::DevicePtr targetRaw(contiguousTarget);
     fl::DevicePtr targetSizeRaw(targetSize);
-    fl::DevicePtr transRaw(trans);
+    fl::DevicePtr transRaw(contiguousTrans);
     fl::DevicePtr bestPathsRaw(bestPathsVar);
-    ;
     fl::DevicePtr workspaceRaw(workspace);
 
     FAC::viterbiPath(

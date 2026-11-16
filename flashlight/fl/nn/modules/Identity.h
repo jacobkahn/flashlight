@@ -17,7 +17,7 @@ namespace fl {
 class FL_API Identity : public Module {
  public:
   Identity() = default;
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
   std::unique_ptr<Module> clone() const override;
   std::string prettyString() const override;
 

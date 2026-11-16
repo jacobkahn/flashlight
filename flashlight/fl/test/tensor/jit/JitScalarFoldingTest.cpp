@@ -13,12 +13,13 @@
 #include "flashlight/fl/tensor/Init.h"
 #include "flashlight/fl/tensor/Shape.h"
 #include "flashlight/fl/tensor/Types.h"
-#include "flashlight/fl/tensor/backend/jit/Utils.h"
-#include "flashlight/fl/tensor/backend/jit/ir/BinaryNode.h"
-#include "flashlight/fl/tensor/backend/jit/ir/CustomNode.h"
-#include "flashlight/fl/tensor/backend/jit/ir/ScalarNode.h"
-#include "flashlight/fl/tensor/backend/jit/ir/ValueNode.h"
-#include "flashlight/fl/tensor/backend/jit/opt/passes/ScalarFolding.h"
+#include "flashlight/fl/tensor/ir/NodeUtils.h"
+#include "flashlight/fl/tensor/ir/BinaryNode.h"
+#include "flashlight/fl/tensor/ir/CustomNode.h"
+#include "flashlight/fl/tensor/ir/ScalarNode.h"
+#include "flashlight/fl/tensor/ir/UnaryNode.h"
+#include "flashlight/fl/tensor/ir/ValueNode.h"
+#include "flashlight/fl/tensor/opt/passes/ScalarFolding.h"
 
 using namespace fl;
 
@@ -71,6 +72,26 @@ TEST_F(JitScalarFoldingTest, binaryNode) {
   ASSERT_EQ(res->impl<ScalarNode>().shape(), shape);
   ASSERT_EQ(res->impl<ScalarNode>().dataType(), dtype);
   ASSERT_EQ(res->impl<ScalarNode>().scalar<int>(), 3);
+}
+
+TEST_F(JitScalarFoldingTest, comparisonFoldsToBool) {
+  Shape shape({2, 2});
+  const auto c1 = ScalarNode::create(shape, dtype::f32, 1.0);
+  const auto c2 = ScalarNode::create(shape, dtype::f32, 2.0);
+  const auto lt = BinaryNode::create(c1, c2, BinaryOp::Lt);
+  ASSERT_EQ(lt->dataType(), dtype::b8);
+  const auto res = scalarFolder_.apply(lt);
+  ASSERT_TRUE(res->isScalar());
+  ASSERT_EQ(res->dataType(), dtype::b8);
+  ASSERT_EQ(res->impl<ScalarNode>().scalar<int>(), 1);
+}
+
+TEST_F(JitScalarFoldingTest, integerDivisionByZeroNotFolded) {
+  Shape shape({2, 2});
+  const auto c1 = ScalarNode::create(shape, dtype::s32, 1);
+  const auto c0 = ScalarNode::create(shape, dtype::s32, 0);
+  const auto div = BinaryNode::create(c1, c0, BinaryOp::Div);
+  ASSERT_EQ(scalarFolder_.apply(div), div);
 }
 
 TEST_F(JitScalarFoldingTest, sharedInput) {
@@ -153,7 +174,7 @@ TEST_F(JitScalarFoldingTest, nonFoldableRoot) {
   const auto c3 = ScalarNode::create(shape, dtype, 3);
   const auto div = BinaryNode::create(c6, c3, BinaryOp::Div);
   const auto custom = CustomNode::create(
-      "identity", {div}, shape, [](const std::vector<const Tensor*>& inputs) {
+      "identity", {div}, shape, dtype, [](const std::vector<const Tensor*>& inputs) {
       return *inputs[0];
       });
   // c6  c3
@@ -172,6 +193,56 @@ TEST_F(JitScalarFoldingTest, nonFoldableRoot) {
   ASSERT_EQ(c2->impl<ScalarNode>().scalar<int>(), 2);
   ASSERT_EQ(custom->inputs(), NodeList({c2}));
   ASSERT_EQ(custom->uses(), UseValList({}));
+}
+
+TEST_F(JitScalarFoldingTest, unaryNode) {
+  // exp(Scalar(1.0)) -> Scalar(e)
+  Shape shape(Shape({2, 2}));
+  auto dtype = dtype::f64;
+  const auto c1 = ScalarNode::create(shape, dtype, 1.0);
+  const auto exp_node = UnaryNode::create(c1, UnaryOp::Exp);
+  const auto res = scalarFolder_.apply(exp_node);
+  ASSERT_TRUE(res->isScalar());
+  ASSERT_EQ(res->impl<ScalarNode>().shape(), shape);
+  ASSERT_EQ(res->impl<ScalarNode>().dataType(), dtype);
+  ASSERT_NEAR(res->impl<ScalarNode>().scalar<double>(), std::exp(1.0), 1e-10);
+}
+
+TEST_F(JitScalarFoldingTest, unaryChain) {
+  // neg(exp(Scalar(2.0))) -> Scalar(-exp(2))
+  Shape shape(Shape({2, 2}));
+  auto dtype = dtype::f64;
+  const auto c = ScalarNode::create(shape, dtype, 2.0);
+  const auto exp_node = UnaryNode::create(c, UnaryOp::Exp);
+  const auto neg_node = UnaryNode::create(exp_node, UnaryOp::Negative);
+  const auto res = scalarFolder_.apply(neg_node);
+  ASSERT_TRUE(res->isScalar());
+  ASSERT_NEAR(
+      res->impl<ScalarNode>().scalar<double>(), -std::exp(2.0), 1e-10);
+}
+
+TEST_F(JitScalarFoldingTest, unaryWithNonScalarInput) {
+  // exp(ValueNode) -> no folding
+  Shape shape(Shape({2, 2}));
+  auto dtype = dtype::f32;
+  const auto v = ValueNode::create(defaultBackend_.full(shape, 1.0f, dtype));
+  const auto exp_node = UnaryNode::create(v, UnaryOp::Exp);
+  const auto res = scalarFolder_.apply(exp_node);
+  ASSERT_EQ(res, exp_node); // unchanged
+}
+
+TEST_F(JitScalarFoldingTest, mixedUnaryBinary) {
+  // exp(Scalar(1) + Scalar(2)) -> Scalar(exp(3))
+  Shape shape(Shape({2, 2}));
+  auto dtype = dtype::f64;
+  const auto c1 = ScalarNode::create(shape, dtype, 1.0);
+  const auto c2 = ScalarNode::create(shape, dtype, 2.0);
+  const auto add = BinaryNode::create(c1, c2, BinaryOp::Add);
+  const auto exp_node = UnaryNode::create(add, UnaryOp::Exp);
+  const auto res = scalarFolder_.apply(exp_node);
+  ASSERT_TRUE(res->isScalar());
+  ASSERT_NEAR(
+      res->impl<ScalarNode>().scalar<double>(), std::exp(3.0), 1e-10);
 }
 
 int main(int argc, char** argv) {

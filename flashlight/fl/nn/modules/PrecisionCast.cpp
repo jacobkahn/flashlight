@@ -7,15 +7,18 @@
 
 #include "flashlight/fl/nn/modules/PrecisionCast.h"
 
+#include <format>
+
 #include "flashlight/fl/common/Utils.h"
+#include "flashlight/fl/tensor/Types.h"
 
 namespace fl {
 
 PrecisionCast::PrecisionCast(fl::dtype targetType) : targetType_(targetType) {}
 
-std::vector<Variable> PrecisionCast::forward(
-    const std::vector<Variable>& inputs) {
-  std::vector<Variable> outputs;
+std::vector<Tensor> PrecisionCast::forward(
+    const std::vector<Tensor>& inputs) {
+  std::vector<Tensor> outputs;
   for (const auto& input : inputs) {
     auto output = input.astype(targetType_);
     outputs.push_back(output);
@@ -23,11 +26,11 @@ std::vector<Variable> PrecisionCast::forward(
   return outputs;
 }
 
-Variable PrecisionCast::forward(const Variable& input) {
-  return forward(std::vector<Variable>{input}).front();
+Tensor PrecisionCast::forward(const Tensor& input) {
+  return forward(std::vector<Tensor>{input}).front();
 }
 
-Variable PrecisionCast::operator()(const Variable& input) {
+Tensor PrecisionCast::operator()(const Tensor& input) {
   return this->forward(input);
 }
 
@@ -36,10 +39,7 @@ std::unique_ptr<Module> PrecisionCast::clone() const {
 }
 
 std::string PrecisionCast::prettyString() const {
-  std::ostringstream ss;
-  ss << "PrecisionCast";
-  ss << " * -> " << targetType_;
-  return ss.str();
+  return std::format("PrecisionCast * -> {}", dtypeToString(targetType_));
 }
 
 } // namespace fl

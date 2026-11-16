@@ -49,23 +49,23 @@ TensorBackend& StubTensor::backend() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-const Shape& StubTensor::shape() {
+const Shape& StubTensor::shape() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-fl::dtype StubTensor::type() {
+fl::dtype StubTensor::type() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-bool StubTensor::isSparse() {
+bool StubTensor::isSparse() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-Location StubTensor::location() {
+Location StubTensor::location() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-void StubTensor::scalar(void* /* out */) {
+void StubTensor::scalarSync(void* /* out */) {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
@@ -73,7 +73,7 @@ void StubTensor::device(void** /* out */) {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-void StubTensor::host(void* /* out */) {
+void StubTensor::hostSync(void* /* out */) {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
@@ -85,11 +85,11 @@ bool StubTensor::isLocked() {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-bool StubTensor::isContiguous() {
+bool StubTensor::isContiguous() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 
-Shape StubTensor::strides() {
+Shape StubTensor::strides() const {
   FL_STUB_TENSOR_UNIMPLEMENTED;
 }
 

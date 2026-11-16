@@ -131,7 +131,7 @@ void CachingMemoryManager::shutdown() {
 }
 
 void CachingMemoryManager::addMemoryManagement(int device) {
-  if (deviceMemInfos_.find(device) != deviceMemInfos_.end()) {
+  if (deviceMemInfos_.contains(device)) {
     return;
   }
   deviceMemInfos_.emplace(
@@ -139,7 +139,7 @@ void CachingMemoryManager::addMemoryManagement(int device) {
 }
 
 void CachingMemoryManager::removeMemoryManagement(int device) {
-  if (deviceMemInfos_.find(device) == deviceMemInfos_.end()) {
+  if (!deviceMemInfos_.contains(device)) {
     return;
   }
   deviceMemInfos_.erase(device);

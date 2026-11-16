@@ -40,7 +40,7 @@ class FL_API Padding : public UnaryModule {
    */
   Padding(std::vector<std::pair<int, int>> padding, double val);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

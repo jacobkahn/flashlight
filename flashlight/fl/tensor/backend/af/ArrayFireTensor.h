@@ -96,7 +96,7 @@ class ArrayFireTensor : public TensorAdapterBase {
    *
    * The default shape is the empty Tensor 0.
    */
-  Shape shape_;
+  mutable Shape shape_;
 
   /*
    * The number of dimensions in this ArrayFire tensor that are "expected" per
@@ -108,6 +108,11 @@ class ArrayFireTensor : public TensorAdapterBase {
    * is thus 1. Scalars have numDims == 0;
    */
   unsigned numDims_{1};
+
+  // Tracks whether device() was called (i.e. af_get_device_ptr set userLock).
+  // If true, the destructor calls af_unlock_array to release the user lock
+  // so the AF memory manager can reclaim the buffer.
+  bool devicePtrRequested_{false};
 
  public:
  constexpr static TensorBackendType tensorBackendType = TensorBackendType::ArrayFire;
@@ -169,7 +174,7 @@ class ArrayFireTensor : public TensorAdapterBase {
    */
   af::array& getHandle();
 
-  ~ArrayFireTensor() override = default;
+  ~ArrayFireTensor() override;
   unsigned numDims() const;
   // Used with the fl::Tensor copy constructor
   std::unique_ptr<TensorAdapterBase> clone() const override;
@@ -177,18 +182,18 @@ class ArrayFireTensor : public TensorAdapterBase {
   TensorBackend& backend() const override;
   Tensor copy() override;
   Tensor shallowCopy() override;
-  const Shape& shape() override;
-  dtype type() override;
-  bool isSparse() override;
+  const Shape& shape() const override;
+  dtype type() const override;
+  bool isSparse() const override;
   af::dtype afHandleType(); // for internal use only
-  Location location() override;
-  void scalar(void* out) override;
+  Location location() const override;
+  void scalarSync(void* out) override;
   void device(void** out) override;
-  void host(void* out) override;
+  void hostSync(void* out) override;
   void unlock() override;
   bool isLocked() override;
-  bool isContiguous() override;
-  Shape strides() override;
+  bool isContiguous() const override;
+  Shape strides() const override;
   const Stream& stream() const override;
   Tensor astype(const dtype type) override;
   Tensor index(const std::vector<Index>& indices) override;

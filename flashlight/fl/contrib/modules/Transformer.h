@@ -63,7 +63,7 @@ class FL_API Transformer : public Container {
   Transformer(Transformer&& other) = default;
   Transformer& operator=(Transformer&& other) = default;
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
   void setDropout(float value);
   void setLayerDropout(float value);
   std::unique_ptr<Module> clone() const override;
@@ -81,9 +81,9 @@ class FL_API Transformer : public Container {
 
   void copy(const Transformer& other);
   void createLayers();
-  Variable mlp(const Variable& input);
-  Variable getMask(int32_t n, bool cache = false);
-  Variable selfAttention(const std::vector<Variable>& input);
+  Tensor mlp(const Tensor& input);
+  Tensor getMask(int32_t n, bool cache = false);
+  Tensor selfAttention(const std::vector<Tensor>& input);
 
   FL_SAVE_LOAD_WITH_BASE(
       Container,

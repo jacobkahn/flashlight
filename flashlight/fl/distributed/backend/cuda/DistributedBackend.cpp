@@ -114,7 +114,9 @@ void allReduce(Tensor& arr, bool async /* = false */) {
     throw std::runtime_error("distributed environment not initialized");
   }
   ncclDataType_t type = detail::getNcclTypeForArray(arr);
-  DevicePtr tensorPtr(arr);
+  // NCCL treats the buffer as flat contiguous
+  auto contiguousArr = arr.asContiguousTensor();
+  DevicePtr tensorPtr(contiguousArr);
   detail::allReduceCuda(
       &arr.stream().impl<CUDAStream>(),
       tensorPtr.get(),
@@ -162,7 +164,8 @@ void allReduceMultiple(
   size_t totalEls{0};
   for (auto& arr : arrs) {
     totalEls += arr->elements();
-    tensorPtrs.emplace_back(DevicePtr(*arr), arr->bytes());
+    // cudaMemcpyAsync treats the buffer as flat contiguous
+    tensorPtrs.emplace_back(DevicePtr(arr->asContiguousTensor()), arr->bytes());
   }
 
   // Make sure our coalesce buffer is large enough. Since we're initializing our

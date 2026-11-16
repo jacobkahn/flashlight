@@ -68,8 +68,8 @@ std::shared_ptr<Sequential> buildSequentialModule(
   return net;
 }
 
-fl::Variable forwardSequentialModuleWithPadMask(
-    const fl::Variable& input,
+fl::Tensor forwardSequentialModuleWithPadMask(
+    const fl::Tensor& input,
     std::shared_ptr<fl::Module> ntwrk,
     const Tensor& inputSizes) {
   // expected input dims T x C x 1 x B

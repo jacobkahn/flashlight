@@ -234,7 +234,7 @@ TEST(DatasetTest, FileBlobDataset) {
       for (int64_t j = 0; j < blobSample.size(); j++) {
         ASSERT_TRUE(
             fl::norm(datSample.at(j).flatten() - blobSample.at(j).flatten())
-                .scalar<float>() <= 1e-05);
+                .scalarSync<float>() <= 1e-05);
       }
     }
   };
@@ -329,7 +329,7 @@ TEST(DatasetTest, FileBlobDataset) {
         ASSERT_TRUE(thdataSample.at(j).shape() == dataSample.at(j).shape());
         ASSERT_TRUE(
             fl::norm(dataSample.at(j).flatten() - thdataSample.at(j).flatten())
-                .scalar<float>() <= 1e-05);
+                .scalarSync<float>() <= 1e-05);
       }
     }
   }
@@ -366,7 +366,7 @@ TEST(DatasetTest, FileBlobDataset) {
       ASSERT_EQ(data.size(), blob->size());
       for (int64_t i = 0; i < data.size(); i++) {
         auto blobSample = blob->get(i);
-        auto idx = static_cast<int>(blobSample.back().scalar<float>());
+        auto idx = static_cast<int>(blobSample.back().scalarSync<float>());
         ASSERT_TRUE(idx >= 0 && idx < data.size());
         auto dataSample = data.at(idx);
         ASSERT_EQ(dataSample.size(), blobSample.size());
@@ -374,7 +374,7 @@ TEST(DatasetTest, FileBlobDataset) {
           ASSERT_TRUE(dataSample.at(j).shape() == blobSample.at(j).shape());
           ASSERT_TRUE(
               fl::norm(dataSample.at(j).flatten() - blobSample.at(j).flatten())
-                  .scalar<float>() <= 1e-05);
+                  .scalarSync<float>() <= 1e-05);
         }
       }
     }
@@ -411,7 +411,7 @@ TEST(DatasetTest, MemoryBlobDataset) {
       for (int64_t j = 0; j < blobSample.size(); j++) {
         ASSERT_TRUE(
             fl::norm(datSample.at(j).flatten() - blobSample.at(j).flatten())
-                .scalar<float>() <= 1e-05);
+                .scalarSync<float>() <= 1e-05);
       }
     }
   };
@@ -485,7 +485,7 @@ TEST(DatasetTest, MemoryBlobDataset) {
         ASSERT_TRUE(thdataSample.at(j).shape() == dataSample.at(j).shape());
         ASSERT_TRUE(
             fl::norm(dataSample.at(j).flatten() - thdataSample.at(j).flatten())
-                .scalar<float>() <= 1e-05);
+                .scalarSync<float>() <= 1e-05);
       }
     }
   }
@@ -519,7 +519,7 @@ TEST(DatasetTest, MemoryBlobDataset) {
       ASSERT_EQ(data.size(), wblob.size());
       for (int64_t i = 0; i < data.size(); i++) {
         auto wblobSample = wblob.get(i);
-        auto idx = static_cast<int>(wblobSample.back().scalar<float>());
+        auto idx = static_cast<int>(wblobSample.back().scalarSync<float>());
         ASSERT_TRUE(idx >= 0 && idx < data.size());
         auto dataSample = data.at(idx);
         ASSERT_EQ(dataSample.size(), wblobSample.size());
@@ -527,7 +527,7 @@ TEST(DatasetTest, MemoryBlobDataset) {
           ASSERT_TRUE(dataSample.at(j).shape() == wblobSample.at(j).shape());
           ASSERT_TRUE(
               fl::norm(dataSample.at(j).flatten() - wblobSample.at(j).flatten())
-                  .scalar<float>() <= 1e-05);
+                  .scalarSync<float>() <= 1e-05);
         }
       }
     }

@@ -21,8 +21,8 @@ using FCC = fl::lib::cuda::FullConnectionCriterion<float>;
 namespace fl::pkg::speech {
 
 static void backward(
-    std::vector<Variable>& inputs,
-    const Variable& gradVar,
+    std::vector<Tensor>& inputs,
+    const Tensor& gradVar,
     int B,
     int T,
     int N,
@@ -36,13 +36,16 @@ static void backward(
         "FullConnectionCriterion backward expects two input args");
   }
 
-  const auto& grad = gradVar.tensor();
+  const auto& grad = gradVar;
   Tensor inputGrad({N, T, B}, fl::dtype::f32);
   Tensor transGrad({N, N}, fl::dtype::f32);
 
   {
-    fl::DevicePtr transRaw(trans);
-    fl::DevicePtr gradRaw(grad);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousTrans = trans.asContiguousTensor();
+    auto contiguousGrad = grad.asContiguousTensor();
+    fl::DevicePtr transRaw(contiguousTrans);
+    fl::DevicePtr gradRaw(contiguousGrad);
     fl::DevicePtr inputGradRaw(inputGrad);
     fl::DevicePtr transGradRaw(transGrad);
     fl::DevicePtr workspaceRaw(workspace);
@@ -55,16 +58,16 @@ static void backward(
         static_cast<float*>(inputGradRaw.get()),
         static_cast<float*>(transGradRaw.get()),
         workspaceRaw.get(),
-        inputs[0].tensor().stream().impl<CUDAStream>().handle());
+        inputs[0].stream().impl<CUDAStream>().handle());
   }
 
-  inputs[0].addGrad(Variable(inputGrad, false));
-  inputs[1].addGrad(Variable(transGrad, false));
+  inputs[0].addGrad(Tensor(inputGrad, false));
+  inputs[1].addGrad(Tensor(transGrad, false));
 }
 
-Variable FullConnectionCriterion::forward(
-    const Variable& inputVar,
-    const Variable& targetVar) {
+Tensor FullConnectionCriterion::forward(
+    const Tensor& inputVar,
+    const Tensor& targetVar) {
   if (inputVar.ndim() != 3) {
     throw std::invalid_argument(
         "FullConnectionCriterion::forward: "
@@ -89,18 +92,21 @@ Variable FullConnectionCriterion::forward(
     throw std::invalid_argument("FCC: target must be int32");
   }
 
-  const auto& input = inputVar.tensor();
-  const auto& target = targetVar.tensor();
+  const auto& input = inputVar;
+  const auto& target = targetVar;
   const auto& targetSize = getTargetSizeArray(target, T);
-  const auto& trans = transVar.tensor();
+  const auto& trans = transVar;
   Tensor loss({B}, fl::dtype::f32);
   Tensor workspace(
       {static_cast<long long>(FCC::getWorkspaceSize(B, T, N))}, fl::dtype::u8);
 
   {
-    fl::DevicePtr inputRaw(input);
+    // CUDA kernels treat buffers as flat contiguous
+    auto contiguousInput = input.asContiguousTensor();
+    auto contiguousTrans = trans.asContiguousTensor();
+    fl::DevicePtr inputRaw(contiguousInput);
     fl::DevicePtr targetSizeRaw(targetSize);
-    fl::DevicePtr transRaw(trans);
+    fl::DevicePtr transRaw(contiguousTrans);
     fl::DevicePtr lossRaw(loss);
     fl::DevicePtr workspaceRaw(workspace);
 
@@ -117,10 +123,10 @@ Variable FullConnectionCriterion::forward(
         input.stream().impl<CUDAStream>().handle());
   }
 
-  return Variable(
+  return Tensor(
       loss,
       {inputVar.withoutData(), transVar.withoutData()},
-      [=](std::vector<Variable>& inputs, const Variable& gradVar) mutable {
+      [=](std::vector<Tensor>& inputs, const Tensor& gradVar) mutable {
         backward(inputs, gradVar, B, T, N, trans, workspace);
       });
 }

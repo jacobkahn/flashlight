@@ -61,36 +61,36 @@ std::unique_ptr<Module> TransformerCriterion::clone() const {
       "Cloning is unimplemented in Module 'TransformerCriterion'");
 }
 
-std::vector<Variable> TransformerCriterion::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> TransformerCriterion::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() < 2 || inputs.size() > 4) {
     throw std::invalid_argument(
         "Invalid inputs size; Transformer criterion takes input,"
         " target, inputSizes [optional], targetSizes [optional]");
   }
-  const Variable& input = inputs[0];
-  const Variable& target = inputs[1];
+  const Tensor& input = inputs[0];
+  const Tensor& target = inputs[1];
   const auto& inputSizes =
-      inputs.size() == 2 ? Tensor() : inputs[2].tensor(); // 1 x B
+      inputs.size() == 2 ? Tensor() : inputs[2]; // 1 x B
   const auto& targetSizes =
-      inputs.size() == 3 ? Tensor() : inputs[3].tensor(); // 1 x B
+      inputs.size() == 3 ? Tensor() : inputs[3]; // 1 x B
 
-  Variable out, alpha;
+  Tensor out, alpha;
   std::tie(out, alpha) =
       vectorizedDecoder(input, target, inputSizes, targetSizes);
 
-  out = logSoftmax(out, 0);
+  out = autograd::logSoftmax(out, 0);
 
-  auto losses = fl::moddims(
-      sum(categoricalCrossEntropy(out, target, ReduceMode::NONE, pad_), {0}),
+  auto losses = autograd::reshape(
+      autograd::sum(autograd::categoricalCrossEntropy(out, target, ReduceMode::NONE, pad_), {0}),
       {-1});
   if (train_ && labelSmooth_ > 0) {
     long long nClass = out.dim(0);
     auto targetTiled = fl::tile(
-        fl::reshape(target.tensor(), {1, target.dim(0), target.dim(1)}),
+        fl::reshape(target, {1, target.dim(0), target.dim(1)}),
         {nClass});
     out = applySeq2SeqMask(out, targetTiled, pad_);
-    auto smoothLoss = fl::moddims(sum(out, {0, 1}), {-1});
+    auto smoothLoss = autograd::reshape(autograd::sum(out, {0, 1}), {-1});
     losses = (1 - labelSmooth_) * losses - (labelSmooth_ / nClass) * smoothLoss;
   }
 
@@ -99,50 +99,50 @@ std::vector<Variable> TransformerCriterion::forward(
 
 // input : D x T x B
 // target: U x B
-std::pair<Variable, Variable> TransformerCriterion::vectorizedDecoder(
-    const Variable& input,
-    const Variable& target,
+std::pair<Tensor, Tensor> TransformerCriterion::vectorizedDecoder(
+    const Tensor& input,
+    const Tensor& target,
     const Tensor& inputSizes,
     const Tensor& targetSizes) {
   int U = target.dim(0);
   int B = target.dim(1);
   int T = input.isEmpty() ? 0 : input.dim(1);
 
-  auto hy = tile(startEmbedding(), {1, 1, B});
+  auto hy = autograd::tile(startEmbedding(), {1, 1, B});
 
   if (U > 1) {
     auto y = target(fl::range(0, U - 1), fl::span);
 
     if (train_) {
       // TODO: other sampling strategies
-      auto mask = Variable(
+      auto mask = Tensor(
           (fl::rand(y.shape()) * 100 <= pctTeacherForcing_).astype(y.type()),
           false);
-      auto samples = Variable(
+      auto samples = Tensor(
           (fl::rand(y.shape()) * (nClass_ - 1)).astype(y.type()), false);
 
       y = mask * y + (1 - mask) * samples;
     }
 
     auto yEmbed = embedding()->forward(y);
-    hy = concatenate({hy, yEmbed}, 1);
+    hy = autograd::concatenate({hy, yEmbed}, 1);
   }
 
-  Variable alpha, summaries;
-  Variable padMask; // no mask, decoder is not looking into future
+  Tensor alpha, summaries;
+  Tensor padMask; // no mask, decoder is not looking into future
   for (int i = 0; i < nLayer_; i++) {
-    hy = layer(i)->forward(std::vector<Variable>({hy, padMask})).front();
+    hy = layer(i)->forward(std::vector<Tensor>({hy, padMask})).front();
   }
 
   if (!input.isEmpty()) {
-    Variable windowWeight;
+    Tensor windowWeight;
     if (window_ && (!train_ || trainWithWindow_)) {
       windowWeight =
           window_->computeVectorizedWindow(U, T, B, inputSizes, targetSizes);
     }
 
     std::tie(alpha, summaries) = attention()->forward(
-        hy, input, Variable(), windowWeight, fl::noGrad(inputSizes));
+        hy, input, Tensor(), windowWeight, fl::noGrad(inputSizes));
 
     hy = hy + summaries;
   }
@@ -158,25 +158,25 @@ Tensor TransformerCriterion::viterbiPath(
   return viterbiPathBase(input, inputSizes, false).first;
 }
 
-std::pair<Tensor, Variable> TransformerCriterion::viterbiPathBase(
+std::pair<Tensor, Tensor> TransformerCriterion::viterbiPathBase(
     const Tensor& input,
     const Tensor& inputSizes,
     bool /* TODO: saveAttn */) {
   bool wasTrain = train_;
   eval();
   std::vector<int> path;
-  std::vector<Variable> alphaVec;
-  Variable alpha;
+  std::vector<Tensor> alphaVec;
+  Tensor alpha;
   TS2SState state;
-  Variable y, ox;
+  Tensor y, ox;
   Tensor maxIdx, maxValues;
   int pred;
 
   for (int u = 0; u < maxDecoderOutputLen_; u++) {
     std::tie(ox, state) =
-        decodeStep(Variable(input, false), y, state, inputSizes);
-    max(maxValues, maxIdx, ox.tensor(), 0);
-    maxIdx.host(&pred);
+        decodeStep(Tensor(input, false), y, state, inputSizes);
+    max(maxValues, maxIdx, ox, 0);
+    maxIdx.hostSync(&pred);
     // TODO: saveAttn
 
     if (pred == eos_) {
@@ -195,14 +195,14 @@ std::pair<Tensor, Variable> TransformerCriterion::viterbiPathBase(
   return std::make_pair(vPath, alpha);
 }
 
-std::pair<Variable, TS2SState> TransformerCriterion::decodeStep(
-    const Variable& xEncoded,
-    const Variable& y,
+std::pair<Tensor, TS2SState> TransformerCriterion::decodeStep(
+    const Tensor& xEncoded,
+    const Tensor& y,
     const TS2SState& inState,
     const Tensor& inputSizes) const {
-  Variable hy;
+  Tensor hy;
   if (y.isEmpty()) {
-    hy = tile(startEmbedding(), {1, 1, xEncoded.dim(2)});
+    hy = autograd::tile(startEmbedding(), {1, 1, xEncoded.dim(2)});
   } else {
     hy = embedding()->forward(y);
   }
@@ -217,22 +217,22 @@ std::pair<Variable, TS2SState> TransformerCriterion::decodeStep(
     if (inState.step == 0) {
       outState.hidden.push_back(hy);
       hy = layer(i)
-               ->forward(std::vector<Variable>({hy, fl::noGrad(padMask)}))
+               ->forward(std::vector<Tensor>({hy, fl::noGrad(padMask)}))
                .front();
     } else {
-      outState.hidden.push_back(concatenate({inState.hidden[i], hy}, 1));
+      outState.hidden.push_back(autograd::concatenate({inState.hidden[i], hy}, 1));
       hy = layer(i)
                ->forward({inState.hidden[i], hy, fl::noGrad(padMask)})
                .front();
     }
   }
 
-  Variable windowWeight, alpha, summary;
+  Tensor windowWeight, alpha, summary;
   if (window_ && (!train_ || trainWithWindow_)) {
     // TODO fix for softpretrain where target size is used
     // for now force to xEncoded.dim(1)
     windowWeight = window_->computeWindow(
-        Variable(),
+        Tensor(),
         inState.step,
         xEncoded.dim(1),
         xEncoded.dim(1),
@@ -242,7 +242,7 @@ std::pair<Variable, TS2SState> TransformerCriterion::decodeStep(
   }
 
   std::tie(alpha, summary) = attention()->forward(
-      hy, xEncoded, Variable(), windowWeight, fl::noGrad(inputSizes));
+      hy, xEncoded, Tensor(), windowWeight, fl::noGrad(inputSizes));
 
   hy = hy + summary;
 
@@ -252,8 +252,8 @@ std::pair<Variable, TS2SState> TransformerCriterion::decodeStep(
 
 std::pair<std::vector<std::vector<float>>, std::vector<TS2SStatePtr>>
 TransformerCriterion::decodeBatchStep(
-    const fl::Variable& xEncoded,
-    std::vector<fl::Variable>& ys,
+    const fl::Tensor& xEncoded,
+    std::vector<fl::Tensor>& ys,
     const std::vector<TS2SState*>& inStates,
     const int /* attentionThreshold */,
     const float smoothingTemperature) const {
@@ -266,9 +266,9 @@ TransformerCriterion::decodeBatchStep(
     } else {
       ys[i] = embedding()->forward(ys[i]);
     } // TODO: input feeding
-    ys[i] = moddims(ys[i], {ys[i].dim(0), 1, -1});
+    ys[i] = autograd::reshape(ys[i], {ys[i].dim(0), 1, -1});
   }
-  Variable yBatched = concatenate(ys, 2); // D x 1 x B
+  Tensor yBatched = autograd::concatenate(ys, 2); // D x 1 x B
 
   std::vector<TS2SStatePtr> outstates(B);
   for (int i = 0; i < B; i++) {
@@ -276,21 +276,21 @@ TransformerCriterion::decodeBatchStep(
     outstates[i]->step = inStates[i]->step + 1;
   }
 
-  Variable outStateBatched;
+  Tensor outStateBatched;
   for (int i = 0; i < nLayer_; i++) {
     if (inStates[0]->step == 0) {
       for (int j = 0; j < B; j++) {
         outstates[j]->hidden.push_back(yBatched(fl::span, fl::span, j));
       }
-      yBatched = layer(i)->forward(std::vector<Variable>({yBatched})).front();
+      yBatched = layer(i)->forward(std::vector<Tensor>({yBatched})).front();
     } else {
-      std::vector<Variable> statesVector(B);
+      std::vector<Tensor> statesVector(B);
       for (int j = 0; j < B; j++) {
         statesVector[j] = inStates[j]->hidden[i];
       }
-      Variable inStateHiddenBatched = concatenate(statesVector, 2);
-      auto tmp = std::vector<Variable>({inStateHiddenBatched, yBatched});
-      auto tmp2 = concatenate(tmp, 1);
+      Tensor inStateHiddenBatched = autograd::concatenate(statesVector, 2);
+      auto tmp = std::vector<Tensor>({inStateHiddenBatched, yBatched});
+      auto tmp2 = autograd::concatenate(tmp, 1);
       for (int j = 0; j < B; j++) {
         outstates[j]->hidden.push_back(tmp2(fl::span, fl::span, j));
       }
@@ -298,18 +298,18 @@ TransformerCriterion::decodeBatchStep(
     }
   }
 
-  Variable alpha, summary;
-  yBatched = moddims(yBatched, {yBatched.dim(0), -1});
+  Tensor alpha, summary;
+  yBatched = autograd::reshape(yBatched, {yBatched.dim(0), -1});
   std::tie(alpha, summary) =
-      attention()->forward(yBatched, xEncoded, Variable(), Variable());
-  alpha = fl::transpose(alpha, {1, 0});
+      attention()->forward(yBatched, xEncoded, Tensor(), Tensor());
+  alpha = autograd::transpose(alpha, {1, 0});
   yBatched = yBatched + summary;
 
   auto outBatched = linearOut()->forward(yBatched);
-  outBatched = logSoftmax(outBatched / smoothingTemperature, 0);
+  outBatched = autograd::logSoftmax(outBatched / smoothingTemperature, 0);
   std::vector<std::vector<float>> out(B);
   for (int i = 0; i < B; i++) {
-    out[i] = outBatched(fl::span, i).tensor().toHostVector<float>();
+    out[i] = outBatched(fl::span, i).toHostVectorSync<float>();
   }
 
   return std::make_pair(out, outstates);
@@ -336,7 +336,7 @@ EmittingModelUpdateFunc buildSeq2SeqTransformerUpdateFunction(
           const std::vector<EmittingModelStatePtr>& rawPrevStates,
           int& t) {
         if (t == 0) {
-          buf->input = fl::Variable(
+          buf->input = fl::Tensor(
               Tensor::fromBuffer({N, T}, emissions, MemoryLocation::Host),
               false);
         }
@@ -363,7 +363,7 @@ EmittingModelUpdateFunc buildSeq2SeqTransformerUpdateFunction(
           for (int i = start; i < end; i++) {
             TS2SState* prevState =
                 static_cast<TS2SState*>(rawPrevStates[i].get());
-            fl::Variable y;
+            fl::Tensor y;
             if (t > 0) {
               y = fl::constant(rawY[i], {1}, fl::dtype::s32, false);
             } else {

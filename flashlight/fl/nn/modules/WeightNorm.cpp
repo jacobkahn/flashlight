@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/nn/modules/Conv2D.h"
@@ -44,31 +45,31 @@ void WeightNorm::transformDims() {
 void WeightNorm::computeWeight() {
   auto v = params_[0];
   auto g = params_[1];
-  Variable nm;
+  Tensor nm;
   // speed of norm operation is the best while doing it across {1} dim
   // tested for convlm model training
   if (dim_ == 0) {
-    nm = moddims(v, {0, -1});
-    nm = norm(nm, {1}, /* p = */ 2, /* keepDims = */ true);
+    nm = autograd::reshape(v, {0, -1});
+    nm = autograd::norm(nm, {1}, /* p = */ 2, /* keepDims = */ true);
   } else if (dim_ == 3) {
     // TODO{fl::Tensor}{enforce 4D parameters from child module?}
-    nm = moddims(v, {-1, 1, 1, 0});
-    nm = reorder(nm, {3, 0, 1, 2});
-    nm = norm(nm, {1}, /* p = */ 2, /* keepDims = */ true);
-    nm = reorder(nm, {1, 2, 3, 0});
+    nm = autograd::reshape(v, {-1, 1, 1, 0});
+    nm = autograd::transpose(nm, {3, 0, 1, 2});
+    nm = autograd::norm(nm, {1}, /* p = */ 2, /* keepDims = */ true);
+    nm = autograd::transpose(nm, {1, 2, 3, 0});
   } else {
     throw std::invalid_argument(
-        "Wrong dimension for Weight Norm: " + std::to_string(dim_));
+        std::format("Wrong dimension for Weight Norm: {}", dim_));
   }
-  auto wt = v * tileAs(g / nm, v);
+  auto wt = v * autograd::tileAs(g / nm, v);
   module_->setParams(wt, 0);
 }
 
 void WeightNorm::initParams() {
   auto moduleParams = module_->params();
   auto& v = moduleParams.at(0);
-  Variable g(
-      norm(v, normDim_, /* p = */ 2, /* keepDims = */ true).tensor(), true);
+  Tensor g(
+      autograd::norm(v, normDim_, /* p = */ 2, /* keepDims = */ true), true);
   if (moduleParams.size() == 2) {
     auto& b = moduleParams[1];
     params_ = {v, g, b};
@@ -79,7 +80,7 @@ void WeightNorm::initParams() {
   }
 }
 
-void WeightNorm::setParams(const Variable& var, int position) {
+void WeightNorm::setParams(const Tensor& var, int position) {
   Module::setParams(var, position);
   // it is necessary to copy all params to the parent module
   // due to copies stored in the parent module (not pointers)
@@ -90,7 +91,7 @@ void WeightNorm::setParams(const Variable& var, int position) {
   }
 }
 
-std::vector<Variable> WeightNorm::forward(const std::vector<Variable>& inputs) {
+std::vector<Tensor> WeightNorm::forward(const std::vector<Tensor>& inputs) {
   if (train_) {
     computeWeight();
   }
@@ -117,10 +118,7 @@ std::unique_ptr<Module> WeightNorm::clone() const {
 }
 
 std::string WeightNorm::prettyString() const {
-  std::ostringstream ss;
-  ss << "WeightNorm";
-  ss << " (" << module_->prettyString() << ", " << dim_ << ")";
-  return ss.str();
+  return std::format("WeightNorm ({}, {})", module_->prettyString(), dim_);
 }
 
 } // namespace fl

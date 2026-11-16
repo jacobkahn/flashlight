@@ -17,7 +17,7 @@ using std::vector;
 namespace fl {
 
 FirstOrderOptimizer::FirstOrderOptimizer(
-    const vector<Variable>& parameters,
+    const vector<Tensor>& parameters,
     double learningRate)
     : parameters_(parameters.begin(), parameters.end()), lr_(learningRate) {}
 

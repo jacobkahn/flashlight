@@ -14,8 +14,6 @@
 
 namespace fl {
 
-class Variable;
-
 /**
  * A Reducer which coalesces added Variables in a cache until some maximum
  * cache size is reached, after which all Variables in the cache are reduced
@@ -38,7 +36,7 @@ class FL_API CoalescingReducer : public Reducer {
   /// synchronized, in bytes
   const std::size_t cacheThresholdBytes_;
   /// A cache that stores coalesced gradients.
-  std::vector<Variable> cache_;
+  std::vector<Tensor> cache_;
   /// The current cache size, in bytes
   std::size_t currCacheSize_{0};
 
@@ -61,18 +59,18 @@ class FL_API CoalescingReducer : public Reducer {
   ~CoalescingReducer() override;
 
   /**
-   * Add a ``Variable`` to ``Reducer``. Behaves as follows:
-   * - if the ``Variable`` exceeds the size of the coalescing cache, call
+   * Add a ``Tensor`` to ``Reducer``. Behaves as follows:
+   * - if the ``Tensor`` exceeds the size of the coalescing cache, call
    *   ``allReduce`` immediately to synchronize.
-   * - if the ``Variable`` is smaller than the cache and adding it would push
+   * - if the ``Tensor`` is smaller than the cache and adding it would push
    *   the cache oversize, flush the cache and synchronize with
    *   ``allReduceMultiple``
-   * - otherwise, add the ``Variable`` to the cache.
+   * - otherwise, add the ``Tensor`` to the cache.
    */
-  void add(Variable& var) override;
+  void add(Tensor& var) override;
 
   /**
-   * Flush any remaining ``Variable``s in the cache and synchronize.
+   * Flush any remaining ``Tensor``s in the cache and synchronize.
    */
   void finalize() override;
 

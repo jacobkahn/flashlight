@@ -91,8 +91,6 @@ int main(int argc, char** argv) {
   handleDeprecatedFlags();
 
   fl::setSeed(FLAGS_seed);
-  fl::DynamicBenchmark::setBenchmarkMode(FLAGS_fl_benchmark_mode);
-
   std::shared_ptr<fl::Reducer> reducer = nullptr;
   if (FLAGS_enable_distributed) {
     fl::pkg::runtime::initDistributed(
@@ -111,21 +109,6 @@ int main(int argc, char** argv) {
   FL_LOG_MASTER(INFO) << "Gflags after parsing \n" << serializeGflags("; ");
   FL_LOG_MASTER(INFO) << "Experiment path: " << runPath;
   FL_LOG_MASTER(INFO) << "Experiment runidx: " << runIdx;
-
-  // flashlight optim mode
-  auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-      ? fl::OptimLevel::DEFAULT
-      : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-  fl::OptimMode::get().setOptimLevel(flOptimLevel);
-  if (FLAGS_fl_amp_use_mixed_precision) {
-    // Only set the optim mode to O1 if it was left empty
-    LOG(INFO) << "Mixed precision training enabled. Will perform loss scaling.";
-    if (FLAGS_fl_optim_mode.empty()) {
-      LOG(INFO) << "Mixed precision training enabled with no "
-                   "optim mode specified - setting optim mode to O1.";
-      fl::OptimMode::get().setOptimLevel(fl::OptimLevel::O1);
-    }
-  }
 
   std::unordered_map<std::string, std::string> config = {
       {kProgramName, exec},
@@ -381,8 +364,8 @@ int main(int argc, char** argv) {
     for (int b = 0; b < batchsz; ++b) {
       auto tgt = target(fl::span, b);
       auto viterbipath =
-          criterion->viterbiPath(op(fl::span, fl::span, b)).toHostVector<int>();
-      auto tgtraw = tgt.toHostVector<int>();
+          criterion->viterbiPath(op(fl::span, fl::span, b)).toHostVectorSync<int>();
+      auto tgtraw = tgt.toHostVectorSync<int>();
 
       // Remove `-1`s appended to the target for batching (if any)
       auto labellen = getTargetSize(tgtraw.data(), tgtraw.size());
@@ -434,10 +417,10 @@ int main(int argc, char** argv) {
       auto output = fl::pkg::runtime::forwardSequentialModuleWithPadMask(
           fl::input(batch[kInputIdx]), ntwrk, batch[kDurationIdx]);
       auto loss =
-          crit->forward({output, fl::Variable(batch[kTargetIdx], false)})
+          crit->forward({output, fl::Tensor(batch[kTargetIdx], false)})
               .front();
-      mtrs.loss.add(loss.tensor());
-      evalOutput(output.tensor(), batch[kTargetIdx], mtrs);
+      mtrs.loss.add(loss);
+      evalOutput(output, batch[kTargetIdx], mtrs);
     }
   };
 
@@ -605,8 +588,8 @@ int main(int argc, char** argv) {
             loss = loss * scaleFactor;
           }
 
-          if (fl::any(fl::isnan(loss.tensor())).asScalar<bool>() ||
-              fl::any(fl::isinf(loss.tensor())).asScalar<bool>()) {
+          if (fl::any(fl::isnan(loss)).asScalar<bool>() ||
+              fl::any(fl::isinf(loss)).asScalar<bool>()) {
             if (FLAGS_fl_amp_use_mixed_precision &&
                 scaleFactor >= fl::kAmpMinimumScaleFactorValue) {
               scaleFactor = scaleFactor / 2.0f;
@@ -623,7 +606,7 @@ int main(int argc, char** argv) {
 
           if (hasher(join(",", readSampleIds(batch[kSampleIdx]))) % 100 <=
               FLAGS_pcttraineval) {
-            evalOutput(output.tensor(), batch[kTargetIdx], meters.train);
+            evalOutput(output, batch[kTargetIdx], meters.train);
           }
 
           // backward
@@ -646,8 +629,8 @@ int main(int argc, char** argv) {
             }
             p.grad() = p.grad() / (FLAGS_batchsize * scaleFactor);
             if (FLAGS_fl_amp_use_mixed_precision) {
-              if (fl::any(fl::isnan(p.grad().tensor())).asScalar<bool>() ||
-                  fl::any(fl::isinf(p.grad().tensor())).asScalar<bool>()) {
+              if (fl::any(fl::isnan(p.grad())).asScalar<bool>() ||
+                  fl::any(fl::isinf(p.grad())).asScalar<bool>()) {
                 if (scaleFactor >= fl::kAmpMinimumScaleFactorValue) {
                   scaleFactor = scaleFactor / 2.0f;
                   FL_VLOG(2) << "AMP: Scale factor decreased. New value:\t"
@@ -664,7 +647,7 @@ int main(int argc, char** argv) {
             continue;
           }
 
-          meters.train.loss.add((loss / scaleFactor).tensor());
+          meters.train.loss.add(loss / scaleFactor);
 
         } while (retrySample);
 

@@ -205,27 +205,27 @@ class RnnClassifier : public Container {
     return std::make_unique<RnnClassifier>(*this);
   }
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override {
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override {
     throw std::runtime_error("Not implemented");
   }
 
-  std::tuple<Variable, Variable, Variable>
-  forward(const Variable& input, const Variable& h, const Variable& c) {
+  std::tuple<Tensor, Tensor, Tensor>
+  forward(const Tensor& input, const Tensor& h, const Tensor& c) {
     const unsigned numChars = input.dim(1);
-    Variable ho, co; // hidden and carry output
+    Tensor ho, co; // hidden and carry output
     // output should be hs x bs x ts : [ 𝑋𝑖𝑛, 𝑁, 𝑇 ]
-    Variable output = embed_->forward(input);
+    Tensor output = embed_->forward(input);
     // The input to the RNN is expected to be of shape [ 𝑋𝑖𝑛, 𝑁, 𝑇 ] where 𝑋𝑖𝑛
     // is the hidden size, 𝑁 is the batch size and 𝑇 is the sequence length.
     std::tie(output, ho, co) = rnn_->forward(output, h, c);
     // The output of the RNN should be of shape [ 𝑋𝑜𝑢𝑡, 𝑁, 𝑇], with 𝑋𝑜𝑢𝑡 to be
     // the hidden_size (unidirectional RNN)
     // Truncate BPTT
-    ho.setCalcGrad(false);
-    co.setCalcGrad(false);
+    ho.setRequiresGrad(false);
+    co.setRequiresGrad(false);
     output = linear_->forward(output);
     output = logsoftmax_(output);
-    output = output(fl::span, fl::span, input.tensor().dim(1) - 1);
+    output = output(fl::span, fl::span, input.dim(1) - 1);
     return std::make_tuple(output, ho, co);
   }
 
@@ -235,20 +235,20 @@ class RnnClassifier : public Container {
 
   // Inference on the given input: returns the category index
   unsigned
-  infer(const std::string& inputString, const Variable& h, const Variable& c) {
+  infer(const std::string& inputString, const Tensor& h, const Tensor& c) {
     Tensor ia = ClassificationDataset::lineToTensor(inputString);
-    Variable output, ho, co;
+    Tensor output, ho, co;
     std::tie(output, ho, co) = forward(noGrad(ia), h, c);
     Tensor maxValue, prediction;
-    fl::max(maxValue, prediction, output.tensor(), 0);
-    unsigned classId = prediction.scalar<unsigned>();
+    fl::max(maxValue, prediction, output, 0);
+    unsigned classId = prediction.scalarSync<unsigned>();
     return classId;
   }
 
   // Predict the category of the given input, compared with the expected label
   // and print the result
   bool unittest(const std::string& input, const std::string& expectedLabel) {
-    Variable output, h, c;
+    Tensor output, h, c;
     auto p = ClassificationDataset::Id2Label[infer(input, h, c)];
     const bool passes = p == expectedLabel;
     const std::string s = (passes ? "✓ " : "✗ ");
@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
   // Each epoch to go over a small percent of the dataset
   for (int e = 0; e < epochs; e++) {
     AverageValueMeter trainLossMeter;
-    Variable output, h, c;
+    Tensor output, h, c;
     const int kInputIdx = 0, kTargetIdx = 1;
     for (auto& example : trainSet) {
       std::tie(output, h, c) = model.forward(noGrad(example[kInputIdx]), h, c);
@@ -315,7 +315,7 @@ int main(int argc, char** argv) {
       // The targets should be the index of the ground truth class for each
       // input example.
       auto loss = criterion(output, target);
-      trainLossMeter.add(loss.tensor().scalar<float>(), target.elements());
+      trainLossMeter.add(loss.scalarSync<float>(), target.elements());
       opt.zeroGrad();
       loss.backward();
       // Clipping is a must have to avoid exploding gradients:
@@ -346,7 +346,7 @@ int main(int argc, char** argv) {
     std::cout << "Global accuracy=" << numMatch / nConfusion << "\t ";
     for (unsigned i = 0; i < nCategories; ++i) {
       std::cout << ClassificationDataset::Id2Label[i] << ":" << std::fixed
-                << std::setprecision(2) << confusion(i, i).scalar<float>()
+                << std::setprecision(2) << confusion(i, i).scalarSync<float>()
                 << " ";
     }
     std::cout << std::endl;
@@ -370,7 +370,7 @@ int main(int argc, char** argv) {
     std::string name;
     std::cout << "Enter a surname and press enter to classify it: ";
     std::cin >> name;
-    Variable output, h, c;
+    Tensor output, h, c;
     std::cout << ClassificationDataset::Id2Label[model.infer(name, h, c)]
               << " ?" << std::endl;
   }

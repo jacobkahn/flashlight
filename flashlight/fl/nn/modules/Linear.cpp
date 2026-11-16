@@ -8,6 +8,7 @@
 #include "flashlight/fl/nn/modules/Linear.h"
 
 #include <cmath>
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -21,10 +22,10 @@ Linear::Linear(int input_size, int output_size, bool bias)
   initialize();
 }
 
-Linear::Linear(const Variable& w)
+Linear::Linear(const Tensor& w)
     : UnaryModule({w}), nIn_(w.dim(1)), nOut_(w.dim(0)), bias_(false) {}
 
-Linear::Linear(const Variable& w, const Variable& b)
+Linear::Linear(const Tensor& w, const Tensor& b)
     : UnaryModule({w, b}), nIn_(w.dim(1)), nOut_(w.dim(0)), bias_(true) {
   if (b.dim(0) != w.dim(0)) {
     throw std::invalid_argument(
@@ -49,19 +50,19 @@ Linear& Linear::operator=(const Linear& other) {
   return *this;
 }
 
-Variable Linear::forward(const Variable& input) {
+Tensor Linear::forward(const Tensor& input) {
   if (bias_) {
-    return linear(
+    return autograd::linear(
         input,
         params_[0].astype(input.type()),
         params_[1].astype(input.type()));
   }
-  return linear(input, params_[0].astype(input.type()));
+  return autograd::linear(input, params_[0].astype(input.type()));
 }
 
 void Linear::initialize() {
   int fanIn = nIn_;
-  auto w = Variable(
+  auto w = Tensor(
       detail::kaimingUniform(Shape({nOut_, nIn_}), fanIn, fl::dtype::f32),
       true);
   if (bias_) {
@@ -78,15 +79,9 @@ std::unique_ptr<Module> Linear::clone() const {
 }
 
 std::string Linear::prettyString() const {
-  std::ostringstream ss;
-  ss << "Linear";
-  ss << " (" << nIn_ << "->" << nOut_ << ")";
-  if (bias_) {
-    ss << " (with bias)";
-  } else {
-    ss << " (without bias)";
-  }
-  return ss.str();
+  return std::format(
+      "Linear ({}->{}) ({})",
+      nIn_, nOut_, bias_ ? "with bias" : "without bias");
 }
 
 } // namespace fl

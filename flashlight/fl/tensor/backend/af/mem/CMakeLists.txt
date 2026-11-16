@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 set(
   MEMORY_SOURCES
   ${CMAKE_CURRENT_LIST_DIR}/MemoryManagerAdapter.cpp

@@ -9,17 +9,17 @@
 
 #include <cmath>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
-double clipGradNorm(const std::vector<Variable>& parameters, double maxNorm) {
+double clipGradNorm(const std::vector<Tensor>& parameters, double maxNorm) {
   double gradNorm = 0.0;
   for (const auto& p : parameters) {
     if (!p.isGradAvailable()) {
       continue;
     }
-    const auto& grad = p.grad().tensor();
+    const auto& grad = p.grad();
     gradNorm += fl::sum(grad * grad).asScalar<double>();
   }
   gradNorm = std::sqrt(gradNorm);
@@ -31,7 +31,7 @@ double clipGradNorm(const std::vector<Variable>& parameters, double maxNorm) {
     if (!p.isGradAvailable()) {
       continue;
     }
-    p.grad().tensor() *= scale;
+    p.grad().detach() *= scale;
   }
   return gradNorm;
 }

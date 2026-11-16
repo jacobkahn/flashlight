@@ -27,27 +27,23 @@ namespace {
 
 float run(
     std::shared_ptr<fl::Module> network,
-    fl::Variable input,
+    fl::Tensor input,
     fl::Tensor duration,
     bool useAmp,
     bool runBwd,
     int numIters,
     bool usePlugin) {
-  input.setCalcGrad(false);
+  input.setRequiresGrad(false);
   network->eval();
-  if (useAmp) {
-    fl::OptimMode::get().setOptimLevel(fl::OptimLevel::O1);
-  } else {
-    fl::OptimMode::get().setOptimLevel(fl::OptimLevel::DEFAULT);
-  }
+  (void)useAmp;
   if (runBwd) {
-    input.setCalcGrad(true);
+    input.setRequiresGrad(true);
     network->train();
   }
   auto benchmarkFunc = [&]() {
     network->zeroGrad();
     input.zeroGrad();
-    fl::Variable output;
+    fl::Tensor output;
     if (usePlugin) {
       output = network->forward({input, fl::noGrad(duration)}).front();
     } else {
@@ -92,7 +88,7 @@ int main(int argc, char** argv) {
   }
   std::cout << network->prettyString() << std::endl;
   // Consider an audio input of 15 sec
-  auto input = fl::Variable(
+  auto input = fl::Tensor(
       fl::rand({1500, FLAGS_in_features, 1, FLAGS_batchsize}), true);
   auto duration = fl::full({1, FLAGS_batchsize}, 1500).astype(fl::dtype::s64);
 

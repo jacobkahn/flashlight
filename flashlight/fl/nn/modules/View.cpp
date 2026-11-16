@@ -7,6 +7,7 @@
 
 #include "flashlight/fl/nn/modules/View.h"
 
+#include <format>
 #include <utility>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -17,9 +18,9 @@ namespace fl {
 
 View::View(Shape dims) : dims_(std::move(dims)) {}
 
-Variable View::forward(const Variable& input) {
+Tensor View::forward(const Tensor& input) {
   Shape dims = dims_;
-  return moddims(input, dims);
+  return autograd::reshape(input, dims);
 }
 
 std::unique_ptr<Module> View::clone() const {
@@ -27,9 +28,7 @@ std::unique_ptr<Module> View::clone() const {
 }
 
 std::string View::prettyString() const {
-  std::ostringstream ss;
-  ss << "View (" << dims_ << ")";
-  return ss.str();
+  return std::format("View ({})", dims_.toString());
 }
 
 } // namespace fl

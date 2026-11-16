@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # ----------------------------- NN Modules -----------------------------
 target_sources(
   fl_pkg_vision

@@ -193,17 +193,17 @@ std::string PlGenerator::regeneratePl(
   auto newPlFile = plDir / (std::to_string(worldRank_) + ".lst");
   std::ofstream plStream(newPlFile);
   for (auto& sample : *selectedDs) {
-    auto duration = sample[kDurationIdx].scalar<float>();
+    auto duration = sample[kDurationIdx].scalarSync<float>();
     if (duration < minInputSize_ || duration > maxInputSize_) {
       continue;
     }
 
     std::vector<std::string> words;
     if (useExistingPl_ && seedModelWER_ < currentModelWER_) {
-      auto tokenTarget = sample[kTargetIdx].toHostVector<int>();
+      auto tokenTarget = sample[kTargetIdx].toHostVectorSync<int>();
       words = tokenToWord_(tokenTarget, tokenDict_, false);
     } else {
-      fl::Variable rawEmission;
+      fl::Tensor rawEmission;
       if (usePlugin) {
         rawEmission = ntwrk
                           ->forward(
@@ -215,7 +215,7 @@ std::string PlGenerator::regeneratePl(
             fl::input(sample[kInputIdx]), ntwrk, sample[kDurationIdx]);
       }
       auto tokenPrediction =
-          criterion->viterbiPath(rawEmission.tensor()).toHostVector<int>();
+          criterion->viterbiPath(rawEmission).toHostVectorSync<int>();
       words = tokenToWord_(tokenPrediction, tokenDict_, true);
     }
     if (words.size() < minTargetSize_ || words.size() > maxTargetSize_) {

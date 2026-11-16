@@ -12,7 +12,9 @@
 #include <gtest/gtest.h>
 
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
+#include "flashlight/fl/test/tensor/TensorTestUtils.h"
 
 using namespace ::testing;
 using namespace fl;
@@ -68,28 +70,6 @@ void assertCommutativeBinop(
       << "in1.type(): " << in1.type() << ", in2.type(): " << in2.type();
 }
 
-void applyToAllFpDtypes(std::function<void(fl::dtype)> func) {
-  func(dtype::f16);
-  func(dtype::f32);
-  func(dtype::f64);
-}
-
-void applyToAllIntegralDtypes(std::function<void(fl::dtype)> func) {
-  // TODO casting to `b8` clips values to 0 and 1, which breaks the fixtures
-  // func(dtype::b8);
-  func(dtype::u8);
-  func(dtype::s16);
-  func(dtype::u16);
-  func(dtype::s32);
-  func(dtype::u32);
-  func(dtype::s64);
-  func(dtype::u64);
-}
-
-void applyToAllDtypes(std::function<void(fl::dtype)> func) {
-  applyToAllFpDtypes(func);
-  applyToAllIntegralDtypes(func);
-}
 } // namespace
 
 TEST(TensorBinaryOpsTest, ArithmeticBinaryOperators) {
@@ -129,7 +109,7 @@ TEST(TensorBinaryOpsTest, ArithmeticBinaryOperators) {
     // e.g., ArrayFire yields max value of dtype
   };
 
-  applyToAllDtypes(testArithmeticBinops);
+  fl::test::forEachSupportedDtype(testArithmeticBinops);
 }
 
 TEST(TensorBinaryOpsTest, ComparisonBinaryOperators) {
@@ -196,7 +176,7 @@ TEST(TensorBinaryOpsTest, ComparisonBinaryOperators) {
     assertScalarTensorBinop(3, d, std::less_equal<>(), falseTrues);
   };
 
-  applyToAllDtypes(testComparisonBinops);
+  fl::test::forEachSupportedDtype(testComparisonBinops);
 }
 
 TEST(TensorBinaryOpsTest, LogicalBinaryOperators) {
@@ -225,7 +205,7 @@ TEST(TensorBinaryOpsTest, LogicalBinaryOperators) {
     assertScalarTensorCommutativeBinop(2, a, std::logical_and<>(), falseTrues);
   };
 
-  applyToAllDtypes(testLogicalBinops);
+  fl::test::forEachSupportedDtype(testLogicalBinops);
 }
 
 TEST(TensorBinaryOpsTest, ModuloBinaryOperators) {
@@ -246,7 +226,7 @@ TEST(TensorBinaryOpsTest, ModuloBinaryOperators) {
     assertTensorScalarBinop(a, 5, std::modulus<>(), a);
   };
 
-  applyToAllIntegralDtypes(testModuloBinop);
+  fl::test::forEachSupportedIntegralDtype(testModuloBinop);
   // TODO ArrayFire needs software impl for fp16 modulo on CUDA backend;
   // bring this test back when supported.
   // testModuloBinop(dtype::f16);
@@ -299,7 +279,7 @@ TEST(TensorBinaryOpsTest, BitBinaryOperators) {
     ASSERT_TRUE(allClose((h >> g), b)) << "dtype: " << type;
   };
 
-  applyToAllIntegralDtypes(testBitBinops);
+  fl::test::forEachSupportedIntegralDtype(testBitBinops);
   // ArrayFire doesn't support bit ops for fps
 }
 
@@ -327,12 +307,13 @@ TEST(TensorBinaryOpsTest, BinaryOperatorIncompatibleShapes) {
         << "dtype: " << type;
     // TODO ArrayFire needs software impl for fp16 modulo on CUDA backend;
     // bring this test back when supported.
-    if (type != dtype::f16) {
+    if (type != dtype::f16 && type != dtype::bf16) {
       ASSERT_THROW((void)Values(lhs % rhs), std::invalid_argument)
           << "dtype: " << type;
     }
     // these operators are generally not well-defined for fps
-    if (type != dtype::f16 && type != dtype::f32 && type != dtype::f64) {
+    if (type != dtype::f16 && type != dtype::f32 && type != dtype::f64 &&
+        type != dtype::bf16) {
       ASSERT_THROW((void)Values(lhs | rhs), std::invalid_argument)
           << "dtype: " << type;
       ASSERT_THROW((void)Values(lhs ^ rhs), std::invalid_argument)
@@ -354,7 +335,7 @@ TEST(TensorBinaryOpsTest, BinaryOperatorIncompatibleShapes) {
     testTensorIncompatibleShapes(type, a, diffDim);
   };
 
-  applyToAllDtypes(testTensorIncompatibleShapesForType);
+  fl::test::forEachSupportedDtype(testTensorIncompatibleShapesForType);
 }
 
 TEST(TensorBinaryOpsTest, minimum) {
@@ -377,7 +358,8 @@ TEST(TensorBinaryOpsTest, maximum) {
   ASSERT_TRUE(allClose(fl::maximum(b, 1).astype(a.type()), b));
 }
 
-using binaryOpFunc_t = Tensor (*)(const Tensor& lhs, const Tensor& rhs);
+using binaryOpFunc_t =
+    Tensor (*)(const Tensor& lhs, const Tensor& rhs, StreamOrDevice s);
 
 TEST(TensorBinaryOpsTest, broadcasting) {
   // Collection of {lhs, rhs, tileShapeLhs, tileShapeRhs} corresponding to
@@ -390,13 +372,15 @@ TEST(TensorBinaryOpsTest, broadcasting) {
   };
   std::vector<ShapeData> shapes = {
       {{3, 1}, {3, 3}, {1, 3}, {1, 1}},
-      {{3}, {3, 3}, {1, 3}, {1, 1}},
+      // Right-align: {3} --> {1, 3} broadcast with {3, 3} --> {3, 3}
+      {{3}, {3, 3}, {3, 1}, {1, 1}},
       {{3, 1, 4}, {3, 6, 4}, {1, 6, 1}, {1, 1, 1}},
       {{3, 1, 4, 1}, {3, 2, 4, 5}, {1, 2, 1, 5}, {1, 1, 1, 1}},
       {{1, 10}, {8, 10}, {8, 1}, {1, 1}},
       {{2, 1, 5, 1}, {2, 3, 5, 3}, {1, 3, 1, 3}, {1, 1, 1, 1}},
       {{3, 1, 2, 1}, {1, 4, 1, 5}, {1, 4, 1, 5}, {3, 1, 2, 1}},
-      {{3, 2, 1}, {3, 1, 4, 1}, {1, 1, 4}, {1, 2, 1, 1}}};
+      // Right-align: {4, 1} --> {1, 4, 1} broadcast with {2, 4, 3} --> {2, 4, 3}
+      {{4, 1}, {2, 4, 3}, {2, 1, 3}, {1, 1, 1}}};
 
   std::unordered_map<binaryOpFunc_t, std::string> functions = {
       {fl::minimum, "minimum"},
@@ -428,25 +412,26 @@ TEST(TensorBinaryOpsTest, broadcasting) {
                        binaryOpFunc_t func) -> std::pair<Tensor, Tensor> {
     assert(lhs.ndim() <= rhs.ndim());
     return {
-        func(lhs, rhs), func(tile(lhs, tileShapeLhs), tile(rhs, tileShapeRhs))};
+        func(lhs, rhs, {}), func(tile(lhs, tileShapeLhs), tile(rhs, tileShapeRhs), {})};
   };
 
   auto computeBroadcastShape = [](const Shape& lhsShape,
                                   const Shape& rhsShape) -> Shape {
+    // Right-align dimensions (numpy/PyTorch broadcasting semantics)
     unsigned maxnDim = std::max(lhsShape.ndim(), rhsShape.ndim());
     Shape outShape{std::vector<Dim>(maxnDim)};
-    for (unsigned i = 0; i < maxnDim; ++i) {
-      if (i > lhsShape.ndim() - 1) {
-        outShape[i] = rhsShape[i];
-      } else if (i > rhsShape.ndim() - 1) {
-        outShape[i] = lhsShape[i];
-      } else if (lhsShape[i] == 1) {
-        outShape[i] = rhsShape[i];
-      } else if (rhsShape[i] == 1) {
-        outShape[i] = lhsShape[i];
-      } else if (lhsShape[i] == rhsShape[i]) {
-        outShape[i] = lhsShape[i];
-      } else if (lhsShape[i] != rhsShape[i]) {
+    for (int i = maxnDim - 1; i >= 0; --i) {
+      int li = i - static_cast<int>(maxnDim - lhsShape.ndim());
+      int ri = i - static_cast<int>(maxnDim - rhsShape.ndim());
+      Dim l = li >= 0 ? lhsShape[li] : 1;
+      Dim r = ri >= 0 ? rhsShape[ri] : 1;
+      if (l == 1) {
+        outShape[i] = r;
+      } else if (r == 1) {
+        outShape[i] = l;
+      } else if (l == r) {
+        outShape[i] = l;
+      } else {
         throw std::runtime_error(
             "computeBroadcastShape - cannot broadcast shape");
       }
@@ -483,7 +468,7 @@ TEST(TensorBinaryOpsTest, broadcasting) {
     const auto lhs = fl::rand(inShape).astype(fl::dtype::s32);
     const auto rhs = fl::fromScalar(scalarVal, fl::dtype::s32);
     const auto rhsTiled = fl::full(inShape, scalarVal, fl::dtype::s32);
-    ASSERT_TRUE(allClose(funcp.first(lhs, rhs), funcp.first(lhs, rhsTiled)));
+    ASSERT_TRUE(allClose(funcp.first(lhs, rhs, {}), funcp.first(lhs, rhsTiled, {})));
   }
 }
 
@@ -502,8 +487,86 @@ TEST(TensorBinaryOpsTest, powerDouble) {
       allClose(fl::power(3, a), fl::full(b.shape(), 3 * 3, fl::dtype::f32)));
 }
 
+TEST(TensorBinaryOpsTest, ScalarTypePromotion) {
+  // Integer tensor + float scalar --> promoted to float output
+  auto intTensor = fl::full({2, 2}, 1, fl::dtype::s32);
+  auto result = fl::add(intTensor, 3.14);
+  ASSERT_EQ(result.type(), fl::dtype::f32);
+
+  // Float tensor + integer-valued scalar --> stays float
+  auto floatTensor = fl::full({2, 2}, 1.0, fl::dtype::f32);
+  auto result2 = fl::add(floatTensor, 2.0);
+  ASSERT_EQ(result2.type(), fl::dtype::f32);
+
+  // Integer tensor + integer-valued scalar --> stays integer
+  auto result3 = fl::add(intTensor, 2.0);
+  ASSERT_EQ(result3.type(), fl::dtype::s32);
+
+  // Scalar-first variants
+  auto result4 = fl::add(3.14, intTensor);
+  ASSERT_EQ(result4.type(), fl::dtype::f32);
+
+  // sub, mul, div
+  ASSERT_EQ(fl::sub(intTensor, 1.5).type(), fl::dtype::f32);
+  ASSERT_EQ(fl::mul(intTensor, 2.0).type(), fl::dtype::s32);
+  ASSERT_EQ(fl::div(intTensor, 0.5).type(), fl::dtype::f32);
+
+  // min/max/power
+  ASSERT_EQ(fl::minimum(intTensor, 3.14).type(), fl::dtype::f32);
+  ASSERT_EQ(fl::maximum(intTensor, 3.14).type(), fl::dtype::f32);
+  ASSERT_EQ(fl::power(intTensor, 0.5).type(), fl::dtype::f32);
+
+  // Integer scalar with integer tensor --> stays integer
+  ASSERT_EQ(fl::minimum(intTensor, 5.0).type(), fl::dtype::s32);
+  ASSERT_EQ(fl::power(intTensor, 2.0).type(), fl::dtype::s32);
+}
+
+TEST(TensorBinaryOpsTest, BroadcastRankMismatch) {
+  // [4] + [3, 4] → [3, 4]: 1-D broadcasts by prepending 1s → [1,4] + [3,4]
+  auto a = Tensor::fromVector<float>({4}, {1, 2, 3, 4});
+  auto b = fl::full({3, 4}, 10.f);
+  auto result = a + b;
+  ASSERT_EQ(result.shape(), Shape({3, 4}));
+  // Each row of b is 10, so row i = [11, 12, 13, 14]
+  for (int r = 0; r < 3; ++r) {
+    ASSERT_TRUE(allClose(
+        result(r, fl::span),
+        Tensor::fromVector<float>({4}, {11, 12, 13, 14})));
+  }
+
+  // [3] + [2, 3, 4] → shape mismatch (3 != 4 on last dim) should throw
+  auto c = fl::full({3}, 1.f);
+  auto d = fl::full({2, 3, 4}, 1.f);
+  ASSERT_THROW(c + d, std::invalid_argument);
+
+  // [4] + [2, 3, 4] → [2, 3, 4]: broadcasts [4] to [1, 1, 4]
+  auto e = Tensor::fromVector<float>({4}, {1, 2, 3, 4});
+  auto f = fl::full({2, 3, 4}, 0.f);
+  auto res2 = e + f;
+  ASSERT_EQ(res2.shape(), Shape({2, 3, 4}));
+  // Each innermost [4] = [1, 2, 3, 4]
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      ASSERT_TRUE(allClose(
+          res2(i, j, fl::span),
+          Tensor::fromVector<float>({4}, {1, 2, 3, 4})));
+    }
+  }
+
+  // Scalar broadcast: {} + [2, 3] → [2, 3]
+  auto scalar = fl::fromScalar(100.f);
+  auto mat = fl::full({2, 3}, 5.f);
+  auto res3 = scalar + mat;
+  ASSERT_EQ(res3.shape(), Shape({2, 3}));
+  ASSERT_TRUE(allClose(res3, fl::full({2, 3}, 105.f)));
+
+  // Reverse: [2, 3] + {} → [2, 3]
+  auto res4 = mat + scalar;
+  ASSERT_TRUE(allClose(res4, fl::full({2, 3}, 105.f)));
+}
+
 int main(int argc, char** argv) {
   InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

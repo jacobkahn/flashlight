@@ -8,9 +8,9 @@
 #include "flashlight/fl/tensor/Shape.h"
 
 #include <algorithm>
+#include <format>
 #include <limits>
 #include <numeric>
-#include <sstream>
 #include <stdexcept>
 
 namespace fl {
@@ -22,11 +22,9 @@ const Dim kEmptyShapeNumberOfElements = 1;
 
 void Shape::checkDimsOrThrow(const size_t dim) const {
   if (dim > ndim() - 1) {
-    std::stringstream ss;
-    ss << "Shape index " << std::to_string(dim)
-       << " out of bounds for shape with " << std::to_string(dims_.size())
-       << " dimensions.";
-    throw std::invalid_argument(ss.str());
+    throw std::invalid_argument(std::format(
+        "Shape index {} out of bounds for shape with {} dimensions.",
+        dim, dims_.size()));
   }
 }
 
@@ -82,18 +80,53 @@ std::vector<Dim>& Shape::get() {
 };
 
 std::string Shape::toString() const {
-  std::stringstream ss;
-  ss << "(";
+  std::string result = "(";
   for (size_t i = 0; i < ndim(); ++i) {
-    ss << dim(i) << (i == ndim() - 1 ? "" : ", ");
+    if (i > 0) result += ", ";
+    result += std::to_string(dim(i));
   }
-  ss << ")";
-  return ss.str();
+  result += ")";
+  return result;
 }
 
 std::ostream& operator<<(std::ostream& ostr, const Shape& s) {
   ostr << s.toString();
   return ostr;
+}
+
+Shape broadcastShapes(const Shape& lhs, const Shape& rhs) {
+  const auto lhsRank = lhs.ndim();
+  const auto rhsRank = rhs.ndim();
+  const auto maxRank = std::max(lhsRank, rhsRank);
+  std::vector<Dim> out(maxRank);
+  // Right-align dimensions (numpy/PyTorch broadcasting semantics):
+  // shorter shape is treated as having leading 1s.
+  for (int i = maxRank - 1; i >= 0; --i) {
+    const int li = i - (maxRank - lhsRank);
+    const int ri = i - (maxRank - rhsRank);
+    const Dim l = li >= 0 ? lhs.dim(li) : 1;
+    const Dim r = ri >= 0 ? rhs.dim(ri) : 1;
+    if (l != r && l != 1 && r != 1) {
+      throw std::invalid_argument(std::format(
+          "broadcastShapes: cannot broadcast shapes {} and {}"
+          " - mismatch at dimension {} ({} vs {}).",
+          lhs.toString(), rhs.toString(), i, l, r));
+    }
+    out[i] = std::max(l, r);
+  }
+  return Shape(out);
+}
+
+Shape contiguousStrides(const Shape& shape) {
+  if (shape.ndim() == 0) {
+    return Shape({1}); // scalar
+  }
+  std::vector<Dim> strides(shape.ndim());
+  strides[shape.ndim() - 1] = 1;
+  for (int i = shape.ndim() - 2; i >= 0; --i) {
+    strides[i] = strides[i + 1] * shape.dim(i + 1);
+  }
+  return Shape(std::move(strides));
 }
 
 } // namespace fl

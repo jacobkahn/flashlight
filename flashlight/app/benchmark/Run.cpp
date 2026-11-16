@@ -67,9 +67,9 @@ void runViTBase(bool fp16 = false) {
   );
 
   auto criterion =
-      [&target](const std::vector<fl::Variable>& input) -> fl::Variable {
-    auto output = logSoftmax(input.front(), 0).astype(target.type());
-    auto loss = fl::mean(fl::sum(fl::negate(target * output), {0}), {1});
+      [&target](const std::vector<fl::Tensor>& input) -> fl::Tensor {
+    auto output = fl::autograd::logSoftmax(input.front(), 0).astype(target.type());
+    auto loss = fl::autograd::mean(fl::autograd::sum(fl::autograd::negative(target * output), {0}), {1});
     return loss;
   };
 
@@ -99,8 +99,8 @@ void runResNet34(bool fp16 = false) {
   std::shared_ptr<fl::Module> model = fl::pkg::vision::resnet34();
 
   auto criterion =
-      [&target](const std::vector<fl::Variable>& input) -> fl::Variable {
-    return categoricalCrossEntropy(logSoftmax(input.front(), 0), target);
+      [&target](const std::vector<fl::Tensor>& input) -> fl::Tensor {
+    return fl::autograd::categoricalCrossEntropy(fl::autograd::logSoftmax(input.front(), 0), target);
   };
 
   // Test
@@ -129,8 +129,8 @@ void runResNet50(bool fp16 = false) {
   std::shared_ptr<fl::Module> model = fl::pkg::vision::resnet50();
 
   auto criterion =
-      [&target](const std::vector<fl::Variable>& input) -> fl::Variable {
-    return categoricalCrossEntropy(logSoftmax(input.front(), 0), target);
+      [&target](const std::vector<fl::Tensor>& input) -> fl::Tensor {
+    return fl::autograd::categoricalCrossEntropy(fl::autograd::logSoftmax(input.front(), 0), target);
   };
 
   // Test
@@ -154,8 +154,8 @@ void runDetr(bool fp16 = false) {
   auto input = fl::input(fl::rand({imgSize, imgSize, 3, batchsize}, dataType));
   auto mask = fl::input(fl::rand({imgSize, imgSize, 1, batchsize}));
 
-  std::vector<fl::Variable> targetBoxes(batchsize);
-  std::vector<fl::Variable> targetClasses(batchsize);
+  std::vector<fl::Tensor> targetBoxes(batchsize);
+  std::vector<fl::Tensor> targetClasses(batchsize);
   for (int i = 0; i < batchsize; i++) {
     auto boxes = fl::rand({4, numObjs}, dataType) * (imgSize - 20);
     boxes(fl::span, fl::range(2, 4)) = boxes(fl::span, fl::range(0, 2)) + 15;
@@ -207,13 +207,13 @@ void runDetr(bool fp16 = false) {
 
   auto criterion =
       [&setCriterion, &weightDict, &targetBoxes, &targetClasses, &dataType](
-          const std::vector<fl::Variable>& input) -> fl::Variable {
+          const std::vector<fl::Tensor>& input) -> fl::Tensor {
     auto loss =
         setCriterion.forward(input[1], input[0], targetBoxes, targetClasses);
     // TODO{fl::Tensor} - explore using a scalar Tensor
-    auto accumLoss = fl::Variable(fl::full({1}, 0, dataType), true);
+    auto accumLoss = fl::Tensor(fl::full({1}, 0, dataType), true);
     for (auto losses : loss) {
-      fl::Variable scaled_loss = weightDict[losses.first] * losses.second;
+      fl::Tensor scaled_loss = weightDict[losses.first] * losses.second;
       accumLoss = scaled_loss + accumLoss;
     }
     return accumLoss;
@@ -256,7 +256,7 @@ void runLmTransformer(bool fp16 = false) {
   );
 
   auto criterion =
-      [&adsm, &target](const std::vector<fl::Variable>& input) -> fl::Variable {
+      [&adsm, &target](const std::vector<fl::Tensor>& input) -> fl::Tensor {
     adsm->train();
     return adsm->forward(input.front(), target);
   };
@@ -274,9 +274,6 @@ void runLmTransformer(bool fp16 = false) {
 /* ---------------------------- ASR Transformer ---------------------------- */
 void runAsrTransformer(bool fp16 = false) {
   fl::app::benchmark::init();
-  if (fp16) {
-    fl::OptimMode::get().setOptimLevel(fl::OptimLevel::O1);
-  }
 
   // Data
   const int batchsize = 8, numFrames = 1500, numFeatures = 80;
@@ -297,7 +294,7 @@ void runAsrTransformer(bool fp16 = false) {
       fl::lib::seq::CriterionScaleMode::NONE);
 
   auto criterion =
-      [&ctc, &target](const std::vector<fl::Variable>& input) -> fl::Variable {
+      [&ctc, &target](const std::vector<fl::Tensor>& input) -> fl::Tensor {
     return ctc->forward({input.front(), target}).front();
   };
 

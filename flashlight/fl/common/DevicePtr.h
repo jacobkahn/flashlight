@@ -17,21 +17,25 @@ class Tensor;
 
 /**
  * DevicePtr provides an RAII wrapper for accessing the device pointer of a
- * Flashlight Tensor array. After calling `device()` on a Flashlight tensor to
- * get a device pointer, its underlying memory is not free until `unlock()` is
- * called - see `fl::Tensor::unlock()`.
- * DevicePtr provides a `std::unique_lock` style API which calls the `unlock()`
- * function in its destructor after getting device pointer. A DevicePtr is
+ * Flashlight Tensor. It holds a shallow copy of the tensor, keeping the
+ * underlying buffer alive for the lifetime of the DevicePtr. A DevicePtr is
  * movable, but not copyable.
+ *
+ * The returned pointer points to the tensor's raw device memory, which may not
+ * be contiguous. Callers that pass the pointer to external libraries (cuDNN,
+ * oneDNN, cuBLAS, etc.) should query the tensor's shape and strides and
+ * provide them to the library via its descriptor/configuration API. Callers
+ * that require contiguous memory should call `Tensor::asContiguous()` or
+ * `Tensor::asContiguousTensor()` before constructing a DevicePtr.
  *
  * Example Usage :
  * \code{.cpp}
  * auto A = Tensor({10, 10});
  * {
- *     DevicePtr devPtr(A); // calls `.device<>()` on array.
+ *     DevicePtr devPtr(A); // calls `.deviceSync<>()` on the tensor.
  *     void* ptr = devPtr.get();
  * }
- * // devPtr is destructed and A.unlock() is automatically called
+ * // devPtr is destructed; buffer stays alive as long as A exists
  * \endcode
  *
  */
@@ -43,13 +47,10 @@ class FL_API DevicePtr {
   DevicePtr() : ptr_(nullptr) {}
 
   /**
-   * @param in input array to get device pointer
+   * @param in input tensor to get device pointer from
    */
   explicit DevicePtr(const Tensor& in);
 
-  /**
-   *`.unlock()` is called on the underlying array in destructor
-   */
   ~DevicePtr();
 
   DevicePtr(const DevicePtr& other) = delete;

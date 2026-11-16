@@ -30,9 +30,9 @@ Seq2SeqState concatState(std::vector<Seq2SeqState>& stateVec) {
   newState.peakAttnPos = stateVec[0].peakAttnPos;
   newState.isValid = stateVec[0].isValid;
 
-  std::vector<Variable> alphaVec;
-  std::vector<std::vector<Variable>> hiddenVec(nAttnRound);
-  std::vector<Variable> summaryVec;
+  std::vector<Tensor> alphaVec;
+  std::vector<std::vector<Tensor>> hiddenVec(nAttnRound);
+  std::vector<Tensor> summaryVec;
   for (auto& state : stateVec) {
     if (state.step != newState.step) {
       throw std::runtime_error("step unmatched");
@@ -46,11 +46,11 @@ Seq2SeqState concatState(std::vector<Seq2SeqState>& stateVec) {
     summaryVec.push_back(state.summary);
   }
 
-  newState.alpha = concatenate(alphaVec, 2);
+  newState.alpha = autograd::concatenate(alphaVec, 2);
   for (int i = 0; i < nAttnRound; i++) {
-    newState.hidden[i] = concatenate(hiddenVec[i], 1);
+    newState.hidden[i] = autograd::concatenate(hiddenVec[i], 1);
   }
-  newState.summary = concatenate(summaryVec, 2);
+  newState.summary = autograd::concatenate(summaryVec, 2);
   return newState;
 }
 
@@ -139,8 +139,8 @@ std::unique_ptr<Module> Seq2SeqCriterion::clone() const {
  * - T: length of the time frames in the encoded X
  */
 
-std::vector<Variable> Seq2SeqCriterion::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> Seq2SeqCriterion::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() < 2 || (inputs.size() > 4)) {
     throw std::invalid_argument(
         "Invalid inputs size; Seq2Seq criterion takes input, target, inputSizes [optional]");
@@ -148,11 +148,11 @@ std::vector<Variable> Seq2SeqCriterion::forward(
   const auto& input = inputs[0];
   const auto& target = inputs[1];
   const auto& inputSizes =
-      inputs.size() == 2 ? Tensor() : inputs[2].tensor(); // 1 x B
+      inputs.size() == 2 ? Tensor() : inputs[2]; // 1 x B
   const auto& targetSizes =
-      inputs.size() == 3 ? Tensor() : inputs[3].tensor(); // 1 x B
+      inputs.size() == 3 ? Tensor() : inputs[3]; // 1 x B
 
-  Variable out, alpha;
+  Tensor out, alpha;
   if (useSequentialDecoder_) {
     std::tie(out, alpha) = decoder(input, target, inputSizes, targetSizes);
   } else {
@@ -160,27 +160,27 @@ std::vector<Variable> Seq2SeqCriterion::forward(
         vectorizedDecoder(input, target, inputSizes, targetSizes);
   }
 
-  out = logSoftmax(out, 0); // C x U x B
+  out = autograd::logSoftmax(out, 0); // C x U x B
 
-  auto losses = moddims(
-      sum(categoricalCrossEntropy(out, target, ReduceMode::NONE, pad_), {0}),
+  auto losses = autograd::reshape(
+      autograd::sum(autograd::categoricalCrossEntropy(out, target, ReduceMode::NONE, pad_), {0}),
       {-1});
   if (train_ && labelSmooth_ > 0) {
     size_t nClass = out.dim(0);
     auto targetTiled = fl::tile(
-        fl::reshape(target.tensor(), {1, target.dim(0), target.dim(1)}),
+        fl::reshape(target, {1, target.dim(0), target.dim(1)}),
         {static_cast<long long>(nClass)});
     out = applySeq2SeqMask(out, targetTiled, pad_);
-    auto smoothLoss = moddims(sum(out, {0, 1}), {-1});
+    auto smoothLoss = autograd::reshape(autograd::sum(out, {0, 1}), {-1});
     losses = (1 - labelSmooth_) * losses - (labelSmooth_ / nClass) * smoothLoss;
   }
 
   return {losses, out};
 }
 
-std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
-    const Variable& input,
-    const Variable& target,
+std::pair<Tensor, Tensor> Seq2SeqCriterion::vectorizedDecoder(
+    const Tensor& input,
+    const Tensor& target,
     const Tensor& inputSizes,
     const Tensor& targetSizes) {
   if (target.ndim() != 2) {
@@ -192,7 +192,7 @@ std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
   int B = target.dim(1);
   int T = input.dim(1);
 
-  auto hy = tile(startEmbedding(), {1, 1, B}); // H x 1 x B
+  auto hy = autograd::tile(startEmbedding(), {1, 1, B}); // H x 1 x B
 
   if (U > 1) {
     // Slice off eos
@@ -202,10 +202,10 @@ std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
         throw std::logic_error(
             "vectorizedDecoder does not support model sampling");
       } else if (samplingStrategy_ == fl::pkg::speech::kRandSampling) {
-        auto mask = Variable(
+        auto mask = Tensor(
             (fl::rand(y.shape()) * 100 <= pctTeacherForcing_).astype(y.type()),
             false);
-        auto samples = Variable(
+        auto samples = Tensor(
             (fl::rand(y.shape()) * (nClass_ - 1)).astype(y.type()), false);
 
         y = mask * y + (1 - mask) * samples;
@@ -213,16 +213,16 @@ std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
     }
 
     auto yEmbed = embedding()->forward(y);
-    hy = concatenate({hy, yEmbed}, 1); // H x U x B
+    hy = autograd::concatenate({hy, yEmbed}, 1); // H x U x B
   }
 
-  Variable alpha, summaries;
+  Tensor alpha, summaries;
   for (int i = 0; i < nAttnRound_; i++) {
-    hy = fl::transpose(hy, {0, 2, 1}); // H x U x B -> H x B x U
+    hy = autograd::transpose(hy, {0, 2, 1}); // H x U x B -> H x B x U
     hy = decodeRNN(i)->forward(hy);
-    hy = fl::transpose(hy, {0, 2, 1}); // H x B x U ->  H x U x B
+    hy = autograd::transpose(hy, {0, 2, 1}); // H x B x U ->  H x U x B
 
-    Variable windowWeight;
+    Tensor windowWeight;
     if (window_ && (!train_ || trainWithWindow_)) {
       windowWeight =
           window_->computeVectorizedWindow(U, T, B, inputSizes, targetSizes);
@@ -231,7 +231,7 @@ std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
     std::tie(alpha, summaries) = attention(i)->forward(
         hy,
         input,
-        Variable(), // vectorizedDecoder does not support prev_attn input
+        Tensor(), // vectorizedDecoder does not support prev_attn input
         windowWeight,
         fl::noGrad(inputSizes));
     hy = hy + summaries;
@@ -241,19 +241,19 @@ std::pair<Variable, Variable> Seq2SeqCriterion::vectorizedDecoder(
   return std::make_pair(out, alpha);
 }
 
-std::pair<Variable, Variable> Seq2SeqCriterion::decoder(
-    const Variable& input,
-    const Variable& target,
+std::pair<Tensor, Tensor> Seq2SeqCriterion::decoder(
+    const Tensor& input,
+    const Tensor& target,
     const Tensor& inputSizes,
     const Tensor& targetSizes) {
   int U = target.dim(0);
 
-  std::vector<Variable> outvec;
-  std::vector<Variable> alphaVec;
+  std::vector<Tensor> outvec;
+  std::vector<Tensor> alphaVec;
   Seq2SeqState state(nAttnRound_);
-  Variable y;
+  Tensor y;
   for (int u = 0; u < U; u++) {
-    Variable ox;
+    Tensor ox;
     std::tie(ox, state) =
         decodeStep(input, y, state, inputSizes, targetSizes, U);
 
@@ -262,17 +262,17 @@ std::pair<Variable, Variable> Seq2SeqCriterion::decoder(
     } else if (samplingStrategy_ == fl::pkg::speech::kGumbelSampling) {
       double eps = 1e-7;
       auto gb = -log(-log((1 - 2 * eps) * fl::rand(ox.shape()) + eps));
-      ox = logSoftmax((ox + Variable(gb, false)) / gumbelTemperature_, 0);
-      y = Variable(exp(ox).tensor(), false);
+      ox = autograd::logSoftmax((ox + Tensor(gb, false)) / gumbelTemperature_, 0);
+      y = Tensor(autograd::exp(ox), false);
     } else if (fl::all(fl::rand({1}) * 100 <= fl::full({1}, pctTeacherForcing_))
                    .asScalar<bool>()) {
       y = target(fl::range(u, u + 1), fl::span);
     } else if (samplingStrategy_ == fl::pkg::speech::kModelSampling) {
       Tensor maxIdx, maxValues;
-      fl::max(maxValues, maxIdx, ox.tensor(), 0);
-      y = Variable(maxIdx, false);
+      fl::max(maxValues, maxIdx, ox, 0);
+      y = Tensor(maxIdx, false);
     } else if (samplingStrategy_ == fl::pkg::speech::kRandSampling) {
-      y = Variable(
+      y = Tensor(
           (fl::rand({1, target.dim(1)}) * (nClass_ - 1)).astype(fl::dtype::s32),
           false);
     } else {
@@ -283,8 +283,8 @@ std::pair<Variable, Variable> Seq2SeqCriterion::decoder(
     alphaVec.push_back(state.alpha);
   }
 
-  auto out = concatenate(outvec, 1); // C x U x B
-  auto alpha = concatenate(alphaVec, 0); // U x T x B
+  auto out = autograd::concatenate(outvec, 1); // C x U x B
+  auto alpha = autograd::concatenate(alphaVec, 0); // U x T x B
 
   return std::make_pair(out, alpha);
 }
@@ -295,7 +295,7 @@ Tensor Seq2SeqCriterion::viterbiPath(
   return viterbiPathBase(input, inputSizes, false).first;
 }
 
-std::pair<Tensor, Variable> Seq2SeqCriterion::viterbiPathBase(
+std::pair<Tensor, Tensor> Seq2SeqCriterion::viterbiPathBase(
     const Tensor& input,
     const Tensor& inputSizes,
     bool saveAttn) {
@@ -303,16 +303,16 @@ std::pair<Tensor, Variable> Seq2SeqCriterion::viterbiPathBase(
   bool wasTrain = train_;
   eval();
   std::vector<int> maxPath;
-  std::vector<Variable> alphaVec;
-  Variable alpha;
+  std::vector<Tensor> alphaVec;
+  Tensor alpha;
   Seq2SeqState state(nAttnRound_);
-  Variable y, ox;
+  Tensor y, ox;
   Tensor maxIdx, maxValues;
   int pred;
   for (int u = 0; u < maxDecoderOutputLen_; u++) {
     std::tie(ox, state) = decodeStep(
-        Variable(input, false), y, state, inputSizes, Tensor(), input.dim(1));
-    fl::max(maxValues, maxIdx, ox.tensor(), 0);
+        Tensor(input, false), y, state, inputSizes, Tensor(), input.dim(1));
+    fl::max(maxValues, maxIdx, ox, 0);
     pred = maxIdx.asScalar<int>();
     if (saveAttn) {
       alphaVec.push_back(state.alpha);
@@ -325,7 +325,7 @@ std::pair<Tensor, Variable> Seq2SeqCriterion::viterbiPathBase(
     maxPath.push_back(pred);
   }
   if (saveAttn) {
-    alpha = concatenate(alphaVec, 0);
+    alpha = autograd::concatenate(alphaVec, 0);
   }
 
   if (wasTrain) {
@@ -366,11 +366,11 @@ std::vector<Seq2SeqCriterion::CandidateHypo> Seq2SeqCriterion::beamSearch(
   for (int l = 0; l < maxLen; l++) {
     newBeam.resize(0);
 
-    std::vector<Variable> prevYVec;
+    std::vector<Tensor> prevYVec;
     std::vector<Seq2SeqState> prevStateVec;
     std::vector<float> prevScoreVec;
     for (auto& hypo : beam) {
-      Variable y;
+      Tensor y;
       if (!hypo.path.empty()) {
         y = constant(hypo.path.back(), {1}, fl::dtype::s32, false);
       }
@@ -378,24 +378,24 @@ std::vector<Seq2SeqCriterion::CandidateHypo> Seq2SeqCriterion::beamSearch(
       prevStateVec.push_back(hypo.state);
       prevScoreVec.push_back(hypo.score);
     }
-    auto prevY = concatenate(prevYVec, 1); // 1 x B
+    auto prevY = autograd::concatenate(prevYVec, 1); // 1 x B
     auto prevState = detail::concatState(prevStateVec);
     int B = prevY.ndim() < 2 ? 1 : prevY.dim(1);
 
-    Variable ox;
+    Tensor ox;
     Seq2SeqState state;
     // do proper cast of input size to batch size
     // because we have beam now for the input
     auto tiledInputSizes = fl::tile(inputSizes, {1, B});
     std::tie(ox, state) = decodeStep(
-        Variable(input, false),
+        Tensor(input, false),
         prevY,
         prevState,
         tiledInputSizes,
         Tensor(),
         input.dim(1));
-    ox = logSoftmax(ox, 0); // C x 1 x B
-    ox = fl::reorder(ox, {0, 2, 1});
+    ox = autograd::logSoftmax(ox, 0); // C x 1 x B
+    ox = autograd::transpose(ox, {0, 2, 1});
 
     auto scoreArr = Tensor::fromBuffer(
         {1, static_cast<long long>(beam.size()), 1},
@@ -403,9 +403,9 @@ std::vector<Seq2SeqCriterion::CandidateHypo> Seq2SeqCriterion::beamSearch(
         MemoryLocation::Host);
     scoreArr = fl::tile(scoreArr, {ox.dim(0)});
 
-    scoreArr = scoreArr + ox.tensor(); // C x B
+    scoreArr = scoreArr + ox; // C x B
     scoreArr = scoreArr.flatten(); // column-first
-    auto scoreVec = scoreArr.toHostVector<float>();
+    auto scoreVec = scoreArr.toHostVectorSync<float>();
 
     std::vector<size_t> indices(scoreVec.size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -460,9 +460,9 @@ std::vector<Seq2SeqCriterion::CandidateHypo> Seq2SeqCriterion::beamSearch(
   return complete.empty() ? beam : complete;
 }
 
-std::pair<Variable, Seq2SeqState> Seq2SeqCriterion::decodeStep(
-    const Variable& xEncoded,
-    const Variable& y,
+std::pair<Tensor, Seq2SeqState> Seq2SeqCriterion::decodeStep(
+    const Tensor& xEncoded,
+    const Tensor& y,
     const Seq2SeqState& inState,
     const Tensor& inputSizes,
     const Tensor& targetSizes,
@@ -473,31 +473,31 @@ std::pair<Variable, Seq2SeqState> Seq2SeqCriterion::decodeStep(
         "expected xEncoded to have at least three dimensions");
   }
 
-  Variable hy;
+  Tensor hy;
   if (y.isEmpty()) {
-    hy = tile(startEmbedding(), {1, 1, static_cast<int>(xEncoded.dim(2))});
+    hy = autograd::tile(startEmbedding(), {1, 1, static_cast<int>(xEncoded.dim(2))});
   } else if (train_ && samplingStrategy_ == fl::pkg::speech::kGumbelSampling) {
-    hy = linear(y, embedding()->param(0));
+    hy = autograd::linear(y, embedding()->param(0));
   } else {
     hy = embedding()->forward(y);
   }
 
   if (inputFeeding_ && !y.isEmpty()) {
-    hy = hy + moddims(inState.summary, hy.shape());
+    hy = hy + autograd::reshape(inState.summary, hy.shape());
   }
-  hy = moddims(hy, {hy.dim(0), -1}); // H x B
+  hy = autograd::reshape(hy, {hy.dim(0), -1}); // H x B
 
   Seq2SeqState outState(nAttnRound_);
   outState.step = inState.step + 1;
 
-  Variable summaries;
+  Tensor summaries;
   for (int i = 0; i < nAttnRound_; i++) {
-    hy = moddims(hy, {hy.dim(0), -1}); // H x 1 x B -> H x B
+    hy = autograd::reshape(hy, {hy.dim(0), -1}); // H x 1 x B -> H x B
     std::tie(hy, outState.hidden[i]) =
         decodeRNN(i)->forward(hy, inState.hidden[i]);
-    hy = moddims(hy, {hy.dim(0), 1, hy.dim(1)}); // H x B -> H x 1 x B
+    hy = autograd::reshape(hy, {hy.dim(0), 1, hy.dim(1)}); // H x B -> H x 1 x B
 
-    Variable windowWeight;
+    Tensor windowWeight;
     // because of the beam search batchsize can be
     // different for xEncoded and y (xEncoded batch = 1 and y batch = beam
     // size)
@@ -527,14 +527,14 @@ std::pair<Variable, Seq2SeqState> Seq2SeqCriterion::decodeStep(
 
 std::pair<std::vector<std::vector<float>>, std::vector<Seq2SeqStatePtr>>
 Seq2SeqCriterion::decodeBatchStep(
-    const fl::Variable& xEncoded,
-    std::vector<fl::Variable>& ys,
+    const fl::Tensor& xEncoded,
+    std::vector<fl::Tensor>& ys,
     const std::vector<Seq2SeqState*>& inStates,
     const int attentionThreshold,
     const float smoothingTemperature) const {
   // NB: xEncoded has to be with batchsize 1
   int batchSize = ys.size();
-  std::vector<Variable> statesVector(batchSize);
+  std::vector<Tensor> statesVector(batchSize);
 
   // Batch Ys
   for (int i = 0; i < batchSize; i++) {
@@ -543,31 +543,31 @@ Seq2SeqCriterion::decodeBatchStep(
     } else {
       ys[i] = embedding()->forward(ys[i]);
       if (inputFeeding_) {
-        ys[i] = ys[i] + moddims(inStates[i]->summary, ys[i].shape());
+        ys[i] = ys[i] + autograd::reshape(inStates[i]->summary, ys[i].shape());
       }
     }
-    ys[i] = moddims(ys[i], {ys[i].dim(0), -1});
+    ys[i] = autograd::reshape(ys[i], {ys[i].dim(0), -1});
   }
-  Variable yBatched = concatenate(ys, 1); // H x B
+  Tensor yBatched = autograd::concatenate(ys, 1); // H x B
 
   std::vector<Seq2SeqStatePtr> outstates(batchSize);
   for (int i = 0; i < batchSize; i++) {
     outstates[i] = std::make_shared<Seq2SeqState>(nAttnRound_);
     outstates[i]->step = inStates[i]->step + 1;
   }
-  Variable outStateBatched;
+  Tensor outStateBatched;
 
   for (int n = 0; n < nAttnRound_; n++) {
     /* (1) RNN forward */
     if (inStates[0]->hidden[n].isEmpty()) {
       std::tie(yBatched, outStateBatched) =
-          decodeRNN(n)->forward(yBatched, Variable());
+          decodeRNN(n)->forward(yBatched, Tensor());
     } else {
       for (int i = 0; i < batchSize; i++) {
         statesVector[i] = inStates[i]->hidden[n];
       }
-      Variable inStateHiddenBatched =
-          concatenate(statesVector, 1).asContiguous();
+      Tensor inStateHiddenBatched =
+          autograd::concatenate(statesVector, 1).asContiguous();
       std::tie(yBatched, outStateBatched) =
           decodeRNN(n)->forward(yBatched, inStateHiddenBatched);
     }
@@ -582,18 +582,18 @@ Seq2SeqCriterion::decodeBatchStep(
           "Batched decoding does not support models with window");
     }
 
-    Variable summaries, alphaBatched;
+    Tensor summaries, alphaBatched;
     // NB:
-    // - Third Variable is set to empty since no attention use it.
+    // - Third Tensor is set to empty since no attention use it.
     // - Only ContentAttention is supported
     std::tie(alphaBatched, summaries) =
-        attention(n)->forward(yBatched, xEncoded, Variable(), Variable());
-    alphaBatched = fl::transpose(alphaBatched, {1, 0, 2}); // B x T -> T x B
+        attention(n)->forward(yBatched, xEncoded, Tensor(), Tensor());
+    alphaBatched = autograd::transpose(alphaBatched, {1, 0, 2}); // B x T -> T x B
     yBatched = yBatched + summaries; // H x B
 
     Tensor bestpath, maxvalues;
-    fl::max(maxvalues, bestpath, alphaBatched.tensor(), 0);
-    std::vector<int> maxIdx = bestpath.toHostVector<int>();
+    fl::max(maxvalues, bestpath, alphaBatched, 0);
+    std::vector<int> maxIdx = bestpath.toHostVectorSync<int>();
     for (int i = 0; i < batchSize; i++) {
       outstates[i]->peakAttnPos = maxIdx[i];
       // TODO: std::abs maybe unnecessary
@@ -607,12 +607,11 @@ Seq2SeqCriterion::decodeBatchStep(
 
   /* (3) Linear forward */
   auto outBatched = linearOut()->forward(yBatched);
-  outBatched = logSoftmax(outBatched / smoothingTemperature, 0);
+  outBatched = autograd::logSoftmax(outBatched / smoothingTemperature, 0);
   std::vector<std::vector<float>> out(batchSize);
   for (int i = 0; i < batchSize; i++) {
     out[i] = outBatched(fl::span, fl::range(i, i + 1))
-                 .tensor()
-                 .toHostVector<float>();
+                 .toHostVectorSync<float>();
   }
 
   return std::make_pair(out, outstates);
@@ -661,7 +660,7 @@ EmittingModelUpdateFunc buildSeq2SeqRnnUpdateFunction(
           const std::vector<EmittingModelStatePtr>& rawPrevStates,
           int& t) {
         if (t == 0) {
-          buf->input = fl::Variable(
+          buf->input = fl::Tensor(
               Tensor::fromBuffer({N, T}, emissions, MemoryLocation::Host),
               false);
         }
@@ -673,7 +672,7 @@ EmittingModelUpdateFunc buildSeq2SeqRnnUpdateFunction(
         for (int i = 0; i < batchSize; i++) {
           Seq2SeqState* prevState =
               static_cast<Seq2SeqState*>(rawPrevStates[i].get());
-          fl::Variable y;
+          fl::Tensor y;
           if (t > 0) {
             y = fl::constant(rawY[i], {1}, fl::dtype::s32, false);
           } else {

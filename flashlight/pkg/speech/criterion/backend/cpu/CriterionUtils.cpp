@@ -30,8 +30,8 @@ Tensor viterbiPath(const Tensor& input, const Tensor& trans) {
     throw std::invalid_argument("viterbiPath: trans must be float32");
   }
 
-  auto inputVec = input.toHostVector<float>();
-  auto transVec = trans.toHostVector<float>();
+  auto inputVec = input.toHostVectorSync<float>();
+  auto transVec = trans.toHostVectorSync<float>();
   std::vector<int> pathVec(B * T);
   std::vector<uint8_t> workspaceVec(ViterbiPath::getWorkspaceSize(B, T, N));
 
@@ -51,7 +51,7 @@ Tensor getTargetSizeArray(const Tensor& target, int maxSize) {
   int B = target.dim(1);
   int L = target.dim(0);
 
-  auto targetVec = target.toHostVector<int>();
+  auto targetVec = target.toHostVectorSync<int>();
   std::vector<int> targetSizeVec(B);
 
   CriterionUtils::batchTargetSize(

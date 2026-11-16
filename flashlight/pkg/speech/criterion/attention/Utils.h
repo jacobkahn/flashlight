@@ -13,9 +13,9 @@ namespace fl {
 namespace pkg {
 namespace speech {
 
-fl::Variable maskAttention(
-    const fl::Variable& input,
-    const fl::Variable& sizes);
+fl::Tensor maskAttention(
+    const fl::Tensor& input,
+    const fl::Tensor& sizes);
 } // namespace speech
 } // namespace pkg
 } // namespace fl

@@ -19,9 +19,9 @@ namespace pkg {
 namespace speech {
 
 struct Seq2SeqState {
-  fl::Variable alpha;
-  std::vector<fl::Variable> hidden;
-  fl::Variable summary;
+  fl::Tensor alpha;
+  std::vector<fl::Tensor> hidden;
+  fl::Tensor summary;
   int step;
   int peakAttnPos;
   bool isValid;
@@ -67,28 +67,28 @@ class Seq2SeqCriterion : public SequenceCriterion {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   /* Next step predictions are based on the target at
    * the previous time-step so this function should only
    * be used for training purposes. */
-  std::pair<fl::Variable, fl::Variable> decoder(
-      const fl::Variable& input,
-      const fl::Variable& target,
+  std::pair<fl::Tensor, fl::Tensor> decoder(
+      const fl::Tensor& input,
+      const fl::Tensor& target,
       const Tensor& inputSizes,
       const Tensor& targetSizes);
 
-  std::pair<fl::Variable, fl::Variable> vectorizedDecoder(
-      const fl::Variable& input,
-      const fl::Variable& target,
+  std::pair<fl::Tensor, fl::Tensor> vectorizedDecoder(
+      const fl::Tensor& input,
+      const fl::Tensor& target,
       const Tensor& inputSizes,
       const Tensor& targetSizes);
 
   Tensor viterbiPath(const Tensor& input, const Tensor& inputSizes = Tensor())
       override;
 
-  std::pair<Tensor, fl::Variable>
+  std::pair<Tensor, fl::Tensor>
   viterbiPathBase(const Tensor& input, const Tensor& inputSizes, bool saveAttn);
 
   std::vector<CandidateHypo> beamSearch(
@@ -119,21 +119,21 @@ class Seq2SeqCriterion : public SequenceCriterion {
     return std::static_pointer_cast<fl::Linear>(module(nAttnRound_ + 1));
   }
 
-  fl::Variable startEmbedding() const {
+  fl::Tensor startEmbedding() const {
     return params_.back();
   }
 
   std::pair<std::vector<std::vector<float>>, std::vector<Seq2SeqStatePtr>>
   decodeBatchStep(
-      const fl::Variable& xEncoded,
-      std::vector<fl::Variable>& ys,
+      const fl::Tensor& xEncoded,
+      std::vector<fl::Tensor>& ys,
       const std::vector<Seq2SeqState*>& inStates,
       const int attentionThreshold = std::numeric_limits<int>::infinity(),
       const float smoothingTemperature = 1.0) const;
 
-  std::pair<fl::Variable, Seq2SeqState> decodeStep(
-      const fl::Variable& xEncoded,
-      const fl::Variable& y,
+  std::pair<fl::Tensor, Seq2SeqState> decodeStep(
+      const fl::Tensor& xEncoded,
+      const fl::Tensor& y,
       const Seq2SeqState& instate,
       const Tensor& inputSizes,
       const Tensor& targetSizes,
@@ -196,9 +196,9 @@ class Seq2SeqCriterion : public SequenceCriterion {
 
 /* Decoder helpers */
 struct Seq2SeqDecoderBuffer {
-  fl::Variable input;
+  fl::Tensor input;
   Seq2SeqState dummyState;
-  std::vector<fl::Variable> ys;
+  std::vector<fl::Tensor> ys;
   std::vector<Seq2SeqState*> prevStates;
   int attentionThreshold;
   double smoothingTemperature;

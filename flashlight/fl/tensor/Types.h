@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Facebook, Inc. 6and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -25,7 +25,8 @@ enum class dtype {
   u8 = 7, // 8-bit unsigned integer
   u16 = 8, // 16-bit unsigned integer
   u32 = 9, // 32-bit unsigned integer
-  u64 = 10 // 64-bit unsigned integer
+  u64 = 10, // 64-bit unsigned integer
+  bf16 = 11 // 16-bit brain float
   // TODO: add support for complex-valued tensors? (AF)
 };
 
@@ -82,5 +83,36 @@ FL_TYPE_TRAIT(unsigned long long, dtype::u64, dtype::u64, "unsigned long long");
 FL_TYPE_TRAIT(bool, dtype::u8, dtype::u8, "bool");
 FL_TYPE_TRAIT(short, dtype::s16, dtype::s16, "short");
 FL_TYPE_TRAIT(unsigned short, dtype::u16, dtype::u16, "short");
+
+/**
+ * Returns true if the dtype is a floating-point type (f16, bf16, f32, f64).
+ */
+FL_API bool isFloatingPoint(dtype type);
+
+/**
+ * Promote two dtypes to a common type.
+ * NumPy-style: float > int, wider > narrower.
+ */
+FL_API dtype promoteDtypes(dtype a, dtype b);
+
+/**
+ * Infer the dtype that best represents a double scalar value.
+ * If the value is exactly representable as an integer and fits in s32, returns
+ * s32. Otherwise returns f32 (matching dtype_traits<double>::ctype).
+ *
+ * Used for scalar-tensor type promotion: the scalar's inferred dtype is
+ * promoted against the tensor's dtype to determine the output type.
+ */
+FL_API dtype scalarDtype(double value);
+
+/**
+ * Determine the output dtype for a tensor-scalar binary operation.
+ *
+ * PyTorch-style: a scalar never widens a floating-point tensor. For example,
+ * f16_tensor / 2.828 stays f16 (the scalar is cast down). But an integer
+ * tensor with a non-integer-valued scalar is promoted to float (e.g.,
+ * s32_tensor / 0.5 becomes f32).
+ */
+FL_API dtype promoteScalarDtype(dtype tensorType, double scalarValue);
 
 } // namespace fl

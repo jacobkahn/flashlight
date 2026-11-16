@@ -9,6 +9,7 @@
 
 #include "flashlight/fl/autograd/Functions.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Random.h"
 #include "flashlight/fl/test/autograd/AutogradTestUtils.h"
 
@@ -24,89 +25,97 @@ TEST(AutogradReductionTest, Sum) {
       s = {6, 1};
     }
 
-    auto x = Variable(fl::rand(s), true);
-    auto y = Variable(fl::rand({6, 3}), true);
+    auto x = Tensor(fl::rand(s), true);
+    auto y = Tensor(fl::rand({6, 3}), true);
 
-    auto z = x * sum(y, {1}, keepDims);
-    auto dz = Variable(fl::full(s, 1.0), false);
+    auto z = x * autograd::sum(y, {1}, keepDims);
+    auto dz = Tensor(fl::full(s, 1.0), false);
     z.backward(dz);
 
     auto dy = y.grad();
     auto dx = x.grad();
-    ASSERT_TRUE(allClose(dy.tensor(), fl::tile(x.tensor(), {1, 3})));
-    ASSERT_TRUE(allClose(dx.tensor(), fl::sum(y.tensor(), {1}, keepDims)));
+    // Reshape x to {6, 1} so tile broadcasts correctly with right-alignment
+    ASSERT_TRUE(allClose(
+        dy, fl::tile(fl::reshape(x, {6, 1}), {1, 3})));
+    ASSERT_TRUE(allClose(dx, fl::sum(y, {1}, keepDims)));
 
     // Reduce over 1-dim input
-    auto funcMean_0 = [keepDims](const Variable& in) {
-      return sum(in, {0}, keepDims);
+    auto funcMean_0 = [keepDims](const Tensor& in) {
+      return autograd::sum(in, {0}, keepDims);
     };
-    auto in = Variable(fl::rand({6}), true);
+    auto in = Tensor(fl::rand({6}), true);
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcMean_0, in, 5E-3));
     // Reduce over scalar input
-    auto inScalar = Variable(fl::fromScalar(3.14), true);
+    auto inScalar = Tensor(fl::fromScalar(3.14), true);
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcMean_0, inScalar, 5E-3));
   }
 
-  auto r = Variable(fl::rand({5, 6, 7, 8}), true);
-  auto rOut = sum(r, {1, 2});
-  auto rOutTensor = fl::sum(r.tensor(), {1, 2});
-  ASSERT_TRUE(allClose(rOut.tensor(), rOutTensor));
+  auto r = Tensor(fl::rand({5, 6, 7, 8}), true);
+  auto rOut = autograd::sum(r, {1, 2});
+  auto rOutTensor = fl::sum(r, {1, 2});
+  ASSERT_TRUE(allClose(rOut, rOutTensor));
 }
 
 TEST(AutogradReductionTest, SumAs) {
-  auto x = Variable(fl::rand({5}), true);
-  auto y = Variable(fl::rand({5, 2}), true);
-  auto z = x * sumAs(y, x);
-  auto dz = Variable(fl::full({5}, 1.0), false);
+  // Use right-alignment compatible shapes: {2} broadcasts with {5, 2}
+  auto x = Tensor(fl::rand({2}), true);
+  auto y = Tensor(fl::rand({5, 2}), true);
+  auto z = x * autograd::sumAs(y, x);
+  auto dz = Tensor(fl::full({2}, 1.0), false);
   z.backward(dz);
   auto dy = y.grad();
   auto dx = x.grad();
-  ASSERT_TRUE(allClose(dy.tensor(), fl::tile(x.tensor(), {1, 2})));
-  ASSERT_TRUE(allClose(dx.tensor(), fl::sum(y.tensor(), {1})));
+  ASSERT_TRUE(allClose(
+      dy, fl::tile(fl::reshape(x, {1, 2}), {5, 1})));
+  ASSERT_TRUE(allClose(dx, fl::sum(y, {0})));
 }
 
 TEST(AutogradReductionTest, SumAs2) {
-  auto y = Variable(fl::rand({5, 2}), true);
-  auto z = sumAs(y, {5});
-  auto dz = Variable(fl::full({5}, 1.0), false);
+  // Use right-alignment compatible target: {2} broadcasts with {5, 2}
+  auto y = Tensor(fl::rand({5, 2}), true);
+  auto z = autograd::sumAs(y, {2});
+  auto dz = Tensor(fl::full({2}, 1.0), false);
   z.backward(dz);
   auto dy = y.grad();
-  ASSERT_TRUE(allClose(dy.tensor(), fl::full({5, 2}, 1.0)));
+  ASSERT_TRUE(allClose(dy, fl::full({5, 2}, 1.0)));
 }
 
 TEST(AutogradReductionTest, Mean) {
   for (const bool keepDims : {false, true}) {
     Shape xShape = keepDims ? Shape({5, 1, 1}) : Shape({5});
-    auto x = Variable(fl::rand(xShape), true);
-    auto y = Variable(fl::rand({5, 3, 2}), true);
-    auto varOut = mean(y, {1, 2}, keepDims);
-    auto z = x * mean(y, {1, 2}, keepDims);
-    auto dz = Variable(fl::full(x.shape(), 1.0), false);
+    auto x = Tensor(fl::rand(xShape), true);
+    auto y = Tensor(fl::rand({5, 3, 2}), true);
+    auto varOut = autograd::mean(y, {1, 2}, keepDims);
+    auto z = x * autograd::mean(y, {1, 2}, keepDims);
+    auto dz = Tensor(fl::full(x.shape(), 1.0), false);
     z.backward(dz);
     auto dy = y.grad();
     auto dx = x.grad();
-    ASSERT_TRUE(allClose(dy.tensor(), fl::tile(x.tensor(), {1, 3, 2}) / 6));
-    ASSERT_TRUE(allClose(dx.tensor(), fl::mean(y.tensor(), {1, 2}, keepDims)));
+    // Reshape x to {5, 1, 1} so tile broadcasts correctly with right-alignment
+    ASSERT_TRUE(allClose(
+        dy,
+        fl::tile(fl::reshape(x, {5, 1, 1}), {1, 3, 2}) / 6));
+    ASSERT_TRUE(allClose(dx, fl::mean(y, {1, 2}, keepDims)));
 
-    auto a = Variable(fl::rand({5, 3, 2}, fl::dtype::f64), true);
-    auto funcMean = [keepDims](Variable& in) {
-      return mean(in, {1, 2}, keepDims);
+    auto a = Tensor(fl::rand({5, 3, 2}, fl::dtype::f64), true);
+    auto funcMean = [keepDims](Tensor& in) {
+      return autograd::mean(in, {1, 2}, keepDims);
     };
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcMean, a, 1E-4));
 
-    auto q = Variable(fl::rand({5, 6, 7, 8}), false);
-    auto qOut = mean(q, {1, 2}, keepDims);
-    auto qOutTensor = fl::mean(q.tensor(), {1, 2}, keepDims);
-    ASSERT_TRUE(allClose(qOut.tensor(), qOutTensor));
+    auto q = Tensor(fl::rand({5, 6, 7, 8}), false);
+    auto qOut = autograd::mean(q, {1, 2}, keepDims);
+    auto qOutTensor = fl::mean(q, {1, 2}, keepDims);
+    ASSERT_TRUE(allClose(qOut, qOutTensor));
 
-    auto funcMean_0 = [keepDims](Variable& in) {
-      return mean(in, {0}, keepDims);
+    auto funcMean_0 = [keepDims](Tensor& in) {
+      return autograd::mean(in, {0}, keepDims);
     };
     // Reduce over 1-dim input
-    auto in = Variable(fl::rand({6}), true);
+    auto in = Tensor(fl::rand({6}), true);
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcMean_0, in, 5E-3));
     // Reduce over scalar input
-    auto inScalar = Variable(fl::fromScalar(3.14), true);
+    auto inScalar = Tensor(fl::fromScalar(3.14), true);
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcMean_0, inScalar, 5E-3));
   }
 }
@@ -115,22 +124,14 @@ TEST(AutogradReductionTest, Variance) {
   std::vector<bool> biased = {true, false};
   for (auto b : biased) {
     for (const bool keepDims : {false, true}) {
-      auto x = Variable(fl::rand({5, 6, 7, 8}, fl::dtype::f64), true);
+      auto x = Tensor(fl::rand({5, 6, 7, 8}, fl::dtype::f64), true);
 
-      // TODO:{fl::Tensor} -- enforce AF versioning and remediate
-      // Behavior of the bias parameter in af::var was changed in
-      // https://git.io/Jv5gF and is different in ArrayFire v3.7. If isbiased is
-      // true, sample variance rather than population variance is used. The
-      // flashlight API implements the opposite behavior to be consistent with
-      // other libraries.
-      bool afVarBiasArg = !b;
+      auto expectedVar = fl::var(x, {1}, b, keepDims);
+      auto calculatedVar = autograd::var(x, {1}, b, keepDims);
+      ASSERT_TRUE(allClose(calculatedVar, expectedVar));
 
-      auto expectedVar = fl::var(x.tensor(), {1}, afVarBiasArg, keepDims);
-      auto calculatedVar = var(x, {1}, b, keepDims);
-      ASSERT_TRUE(allClose(calculatedVar.tensor(), expectedVar));
-
-      auto funcVar = [b, keepDims](Variable& in) {
-        return var(in, {1, 2}, b, keepDims);
+      auto funcVar = [b, keepDims](Tensor& in) {
+        return autograd::var(in, {1, 2}, b, keepDims);
       };
       ASSERT_TRUE(fl::detail::jacobianTestImpl(funcVar, x, 1E-5, 1E-5));
     }
@@ -138,25 +139,37 @@ TEST(AutogradReductionTest, Variance) {
 }
 
 TEST(AutogradReductionTest, Norm) {
-  auto x = Variable(fl::rand({5, 3}, fl::dtype::f64), true);
+  auto x = Tensor(fl::rand({5, 3}, fl::dtype::f64), true);
   for (const bool keepDims : {false, true}) {
-    auto funcNorm2 = [keepDims](Variable& in) {
-      return norm(in, {1}, 2, keepDims);
+    auto funcNorm2 = [keepDims](Tensor& in) {
+      return autograd::norm(in, {1}, 2, keepDims);
     };
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcNorm2, x, 1E-4));
-    auto funcNorm1 = [keepDims](Variable& in) {
-      return norm(in, {1}, 1, keepDims);
+    auto funcNorm1 = [keepDims](Tensor& in) {
+      return autograd::norm(in, {1}, 1, keepDims);
     };
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcNorm1, x, 1E-4));
-    auto funcNorm3 = [keepDims](Variable& in) {
-      return norm(in, {1}, 3, keepDims);
+    auto funcNorm3 = [keepDims](Tensor& in) {
+      return autograd::norm(in, {1}, 3, keepDims);
     };
     ASSERT_TRUE(fl::detail::jacobianTestImpl(funcNorm3, x, 1E-4));
   }
 }
 
+TEST(AutogradReductionTest, Std) {
+  auto x = Tensor(fl::rand({5, 6, 7}, fl::dtype::f64), true);
+  for (auto biased : {true, false}) {
+    for (const bool keepDims : {false, true}) {
+      auto funcStd = [biased, keepDims](Tensor& in) {
+        return autograd::std(in, {1}, biased, keepDims);
+      };
+      ASSERT_TRUE(fl::detail::jacobianTestImpl(funcStd, x, 1E-4));
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

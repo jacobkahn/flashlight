@@ -36,8 +36,8 @@ class LmModel : public fl::Container {
     }
   }
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& input) override {
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& input) override {
     auto out = input[0];
     // Avoid fp16 usage in any embedding-ralated calls.
     out = frontend_->forward(out);
@@ -45,7 +45,7 @@ class LmModel : public fl::Container {
     // Run all transformer forward passes in fp16
     out = out.astype(f16);
     for (int trIdx = 0; trIdx < transformers_.size(); trIdx++) {
-      out = transformers_[trIdx]->forward({out, fl::Variable()}).front();
+      out = transformers_[trIdx]->forward({out, fl::Tensor()}).front();
     }
 
     // Make sure passing fp32 tensor to criterion.

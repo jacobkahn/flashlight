@@ -21,12 +21,12 @@ TEST(PositionalEmbeddingSine, PytorchComparision) {
   Shape dims = {W, H, 1, B};
   auto inputArray = fl::full(dims, 0);
   inputArray(fl::range(0, 4), fl::range(0, 4)) = fl::full({4, 4, 1, B}, 1);
-  auto input = Variable(inputArray, false);
+  auto input = Tensor(inputArray, false);
 
   PositionalEmbeddingSine pos(hiddenDim / 2, 10000.0f, false, 0.0f);
 
   auto result = pos.forward({input})[0];
   ASSERT_EQ(result.shape(), Shape({6, 6, 8, 1}));
-  ASSERT_LE(result(0, 5, 3, 0).tensor().scalar<float>() - 0.9992f, 1e-5);
-  ASSERT_LE(result(0, 0, 0, 0).tensor().scalar<float>() - 0.841471f, 1e-5);
+  ASSERT_LE(result(0, 5, 3, 0).scalarSync<float>() - 0.9992f, 1e-5);
+  ASSERT_LE(result(0, 0, 0, 0).scalarSync<float>() - 0.841471f, 1e-5);
 }

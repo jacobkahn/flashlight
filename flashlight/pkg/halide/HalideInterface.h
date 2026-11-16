@@ -15,10 +15,10 @@
 #include <HalideRuntime.h>
 #include <HalideRuntimeCuda.h>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/DevicePtr.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
 
 #define FL_HALIDE_CHECK(exp)                                       \

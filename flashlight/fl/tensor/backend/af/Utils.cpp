@@ -98,7 +98,9 @@ af::dim4 flToAfDims(const Shape& shape) {
 
   af::dim4 out(1, 1, 1, 1);
   for (size_t i = 0; i < shape.ndim(); ++i) {
-    out.dims[i] = shape.dim(i);
+    // FL row-major: dim 0 = outermost. AF col-major: dim 0 = innermost.
+    // Reverse the dimension order.
+    out.dims[shape.ndim() - 1 - i] = shape.dim(i);
   }
   return out;
 }
@@ -126,7 +128,8 @@ void afToFlDims(const af::dim4& d, const unsigned numDims, Shape& s) {
 
   storage.resize(numDims);
   for (unsigned i = 0; i < numDims; ++i) {
-    s[i] = d[i];
+    // Reverse: AF dim 0 = innermost -> FL dim (numDims-1)
+    s[i] = d[numDims - 1 - i];
   }
 }
 
@@ -293,6 +296,22 @@ af_border_type flToAfPadType(PadType type) {
           "flToAfPadType: Flashlight padding "
           "type not supported by ArrayFire");
   }
+}
+
+unsigned flToAfAxis(unsigned flAxis, unsigned ndim) {
+  return ndim - 1 - flAxis;
+}
+
+unsigned afToFlAxis(unsigned afAxis, unsigned ndim) {
+  return ndim - 1 - afAxis;
+}
+
+std::vector<int> flToAfAxes(const std::vector<int>& flAxes, int ndim) {
+  std::vector<int> afAxes(flAxes.size());
+  for (size_t i = 0; i < flAxes.size(); ++i) {
+    afAxes[i] = ndim - 1 - flAxes[i];
+  }
+  return afAxes;
 }
 
 } // namespace fl

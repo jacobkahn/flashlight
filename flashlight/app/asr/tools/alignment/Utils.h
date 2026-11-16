@@ -65,7 +65,7 @@ std::vector<std::vector<std::string>> mapIndexToToken(
   for (int b = 0; b < B; b++) {
     std::vector<std::string> tokens;
     for (int t = 0; t < T; t++) {
-      int p = paths(t, b).scalar<int>();
+      int p = paths(t, b).scalarSync<int>();
       if (p == -1) {
         break;
       }

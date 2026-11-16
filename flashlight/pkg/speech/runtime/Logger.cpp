@@ -122,7 +122,7 @@ Tensor allreduceGet(SpeechStatMeter& mtr) {
 void allreduceSet(SpeechStatMeter& mtr, Tensor& val) {
   mtr.reset();
   // Caveat: maxInputSz_, maxTargetSz_ would be approximate
-  auto valVec = val.toHostVector<int64_t>();
+  auto valVec = val.toHostVectorSync<int64_t>();
   SpeechStats stats;
   auto denom = (valVec[4] == 0) ? 1 : valVec[4];
   stats.totalInputSz_ = valVec[0];

@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
 
 /**
@@ -18,7 +18,7 @@
  *
  * Functions for initializing tensors.
  *
- * Provides facilities for creating a `fl::Variable` tensor of different types
+ * Provides facilities for creating a `fl::Tensor` tensor of different types
  * and initializations vis-a-vis probability distributions, constants, and the
  * identity. Additionally wraps common tensors as integrated into modules.
  */
@@ -76,13 +76,13 @@ FL_API Tensor normal(
  * al (2015)](https://arxiv.org/abs/1502.01852): _Delving Deep into Rectifiers:
  * Surpassing Human-Level Performance on ImageNet Classification._
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
@@ -95,8 +95,8 @@ kaimingUniform(const Shape& shape, int fanIn, fl::dtype type = fl::dtype::f32);
  * [He et al (2015)](https://arxiv.org/abs/1502.01852): _Delving Deep into
  * Rectifiers: Surpassing Human-Level Performance on ImageNet Classification._
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
  * @param type the datatype for which to create the tensor
  *
  * @return a `Tensor` containing a tensor with random values distributed
@@ -114,9 +114,9 @@ kaimingNormal(const Shape& shape, int fanIn, fl::dtype type = fl::dtype::f32);
  * (2010)](http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf):
  * _Understanding the difficulty of training deep feedforward neural networks_.
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
- * @param fanOut number of output units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
+ * @param fanOut number of output units in the Tensor
  * @param type the datatype with which to create the tensor
  *
  * @return a `Tensor` containing a tensor with random values distributed
@@ -138,9 +138,9 @@ FL_API Tensor glorotUniform(
  * _Understanding the difficulty of training deep feedforward neural
  * networks._
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
- * @param fanOut number of output units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
+ * @param fanOut number of output units in the Tensor
  * @param type the datatype for which to create the tensor
  *
  * @return a `Tensor` containing a tensor with random values distributed
@@ -200,38 +200,38 @@ FL_API Tensor erfinv(const Tensor& y);
 } // namespace detail
 
 /**
- * Constructs a `Variable` with gradient calculation disabled, from a given
+ * Constructs a `Tensor` with gradient calculation disabled, from a given
  * array
  *
  * @param arr a `Tensor` to be used
- * @return a `Variable` from the given array with gradient calculation disabled
+ * @return a `Tensor` from the given array with gradient calculation disabled
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable input(const Tensor& arr);
+FL_API Tensor input(const Tensor& arr);
 
 /**
  * See `fl::input` above.
  *
  * @param arr a `Tensor` to be used
- * @return a `Variable` from the given array with gradient calculation disabled
+ * @return a `Tensor` from the given array with gradient calculation disabled
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable noGrad(const Tensor& arr);
+FL_API Tensor noGrad(const Tensor& arr);
 
 /**
- * Constructs a `Variable` with gradient calculation enabled, from a given array
+ * Constructs a `Tensor` with gradient calculation enabled, from a given array
  *
  * @param arr a `Tensor` to be used
- * @return a `Variable` from the given array with gradient calculation enabled
+ * @return a `Tensor` from the given array with gradient calculation enabled
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable param(const Tensor& arr);
+FL_API Tensor param(const Tensor& arr);
 
 /**
- * Creates a `Variable` representing a tensor with dimensions `[inputSize,
+ * Creates a `Tensor` representing a tensor with dimensions `[inputSize,
  * outputSize]` where all elements are a constant
  *
  * @param val the value of the constant in the tensor
@@ -239,13 +239,13 @@ FL_API Variable param(const Tensor& arr);
  * @param outputSize the first dimension of the output tensor shape
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with constant values.
+ * @return A `Tensor` containing a tensor with constant values.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable constant(
+FL_API Tensor constant(
     double val,
     int inputSize,
     int outputSize,
@@ -253,83 +253,83 @@ FL_API Variable constant(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor of up to rank 4 with arbitrary
+ * Creates a `Tensor` representing a tensor of up to rank 4 with arbitrary
  * dimensions where all elements are a constant
  *
  * @param val the value of the constant in the tensor
  * @param shape a Tensor shape
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with constant values.
+ * @return A `Tensor` containing a tensor with constant values.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable constant(
+FL_API Tensor constant(
     double val,
     const Shape& shape,
     fl::dtype type = fl::dtype::f32,
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a scalar with a given value and type.
+ * Creates a `Tensor` representing a scalar with a given value and type.
  *
  * @param val the value of the tensor scalar
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with constant values.
+ * @return A `Tensor` containing a tensor with constant values.
  *
  * \ingroup nn_init_utils
  */
 template <typename T>
-Variable
+Tensor
 scalar(T val, fl::dtype type = dtype_traits<T>::ctype, bool calcGrad = true) {
-  return Variable(fromScalar(val, type), calcGrad);
+  return Tensor(fromScalar(val, type), calcGrad);
 }
 
 /**
- * Creates a `Variable` representing an identity tensor with dimensions
+ * Creates a `Tensor` representing an identity tensor with dimensions
  * `[inputSize, outputSize]`.
  *
  * @param inputSize the second dimension for the output tensor shape
  * @param outputSize the first dimension of the output tensor shape
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing the identity tensor.
+ * @return A `Tensor` containing the identity tensor.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable identity(
+FL_API Tensor identity(
     int inputSize,
     int outputSize,
     fl::dtype type = fl::dtype::f32,
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing an identity tensor of up to rank 4 with
+ * Creates a `Tensor` representing an identity tensor of up to rank 4 with
  * arbitrary dimensions.
  *
  * @param shape a Tensor shape
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing the identity tensor.
+ * @return A `Tensor` containing the identity tensor.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable identity(
+FL_API Tensor identity(
     const Shape& shape,
     fl::dtype type = fl::dtype::f32,
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with dimensions `[inputSize,
+ * Creates a `Tensor` representing a tensor with dimensions `[inputSize,
  * outputSize]`, where elements are distributed according to a uniform
  * distribution with parameters \f$\mathcal{U}(min, max)\f$. See [Uniform
  * Distribution](https://en.wikipedia.org/wiki/Uniform_distribution_(continuous)).
@@ -340,14 +340,14 @@ FL_API Variable identity(
  * @param max the upper bound parameter for the uniform distribution
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable uniform(
+FL_API Tensor uniform(
     int inputSize,
     int outputSize,
     double min = 0,
@@ -356,7 +356,7 @@ FL_API Variable uniform(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor of up to rank 4 with arbitrary
+ * Creates a `Tensor` representing a tensor of up to rank 4 with arbitrary
  * dimensions, where elements are distributed according to a uniform
  * distribution with parameters \f$\mathcal{U}(min, max)\f$. See [Uniform
  * Distribution](https://en.wikipedia.org/wiki/Uniform_distribution_(continuous)).
@@ -366,14 +366,14 @@ FL_API Variable uniform(
  * @param max the upper bound parameter for the uniform distribution
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable uniform(
+FL_API Tensor uniform(
     const Shape& shape,
     double min = 0,
     double max = 1,
@@ -381,7 +381,7 @@ FL_API Variable uniform(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with dimensions `[inputSize,
+ * Creates a `Tensor` representing a tensor with dimensions `[inputSize,
  * outputSize]` where elements are distributed according to a normal
  * distribution with parameters \f$\mathcal{N}(\mu, \sigma^2)\f$. See [Normal
  * Distribution](https://en.wikipedia.org/wiki/Normal_distribution).
@@ -392,14 +392,14 @@ FL_API Variable uniform(
  * @param mean the mean by which to parameterize the distribution
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable normal(
+FL_API Tensor normal(
     int inputSize,
     int outputSize,
     double stdv = 1,
@@ -408,7 +408,7 @@ FL_API Variable normal(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor of up to rank 4 with arbitrary
+ * Creates a `Tensor` representing a tensor of up to rank 4 with arbitrary
  * dimensions, where elements are distributed according to a  normal
  * distribution with parameters \f$\mathcal{N}(\mu, \sigma^2)\f$. See [Normal
  * Distribution](https://en.wikipedia.org/wiki/Normal_distribution).
@@ -418,14 +418,14 @@ FL_API Variable normal(
  * @param mean the mean by which to parameterize the distribution
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable normal(
+FL_API Tensor normal(
     const Shape& shape,
     double stdv = 1,
     double mean = 0,
@@ -433,71 +433,71 @@ FL_API Variable normal(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with given input dimensions where
+ * Creates a `Tensor` representing a tensor with given input dimensions where
  * elements are uniformly distributed according to the method outlined in [He et
  * al (2015)](https://arxiv.org/abs/1502.01852): _Delving Deep into Rectifiers:
  * Surpassing Human-Level Performance on ImageNet Classification._
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable kaimingUniform(
+FL_API Tensor kaimingUniform(
     const Shape& shape,
     int fanIn,
     fl::dtype type = fl::dtype::f32,
     bool calcGrad = true);
 /**
- * Creates a `Variable` representing a tensor with given input dimensions where
+ * Creates a `Tensor` representing a tensor with given input dimensions where
  * elements are normally distributed according to the method
  * outlined in [He et al (2015)](https://arxiv.org/abs/1502.01852):
  * _Delving Deep into Rectifiers: Surpassing Human-Level Performance on
  * ImageNet Classification._
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable kaimingNormal(
+FL_API Tensor kaimingNormal(
     const Shape& shape,
     int fanIn,
     fl::dtype type = fl::dtype::f32,
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with given input dimensions where
+ * Creates a `Tensor` representing a tensor with given input dimensions where
  * elements are uniformly distributed according to the
  * method outlined in [Glorot and Bengio
  * (2010)](http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf):
  * _Understanding the difficulty of training deep feedforward neural networks_.
  *
- * @param const shape& the const shape& of output Variable
- * @param fanIn number of input units in the Variable
- * @param fanOut number of output units in the Variable
+ * @param const shape& the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
+ * @param fanOut number of output units in the Tensor
  * @param type the datatype with which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable glorotUniform(
+FL_API Tensor glorotUniform(
     const Shape& shape,
     int fanIn,
     int fanOut,
@@ -505,26 +505,26 @@ FL_API Variable glorotUniform(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with given input dimensions where
+ * Creates a `Tensor` representing a tensor with given input dimensions where
  * elements are normally distributed according to the
  * method outlined in [Glorot and Bengio
  * (2010)](http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf):
  * _Understanding the difficulty of training deep feedforward neural
  * networks._
  *
- * @param shape the const shape& of output Variable
- * @param fanIn number of input units in the Variable
- * @param fanOut number of output units in the Variable
+ * @param shape the const shape& of output Tensor
+ * @param fanIn number of input units in the Tensor
+ * @param fanOut number of output units in the Tensor
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable glorotNormal(
+FL_API Tensor glorotNormal(
     const Shape& shape,
     int fanIn,
     int fanOut,
@@ -532,7 +532,7 @@ FL_API Variable glorotNormal(
     bool calcGrad = true);
 
 /**
- * Creates a `Variable` representing a tensor with given input dimensions where
+ * Creates a `Tensor` representing a tensor with given input dimensions where
  * elements are distributed according to the a truncated normal distribution as
  * in [here](https://en.wikipedia.org/wiki/Truncated_normal_distribution).
  *
@@ -543,14 +543,14 @@ FL_API Variable glorotNormal(
  * @param maxCutOff the maximum value of the distribution
  * @param type the datatype for which to create the tensor
  * @param calcGrad flag denoting whether gradient calculation on the resulting
- * `Variable` should be enabled
+ * `Tensor` should be enabled
  *
- * @return A `Variable` containing a tensor with random values distributed
+ * @return A `Tensor` containing a tensor with random values distributed
  * accordingly.
  *
  * \ingroup nn_init_utils
  */
-FL_API Variable truncNormal(
+FL_API Tensor truncNormal(
     const Shape& shape,
     double stdv = 1.,
     double mean = 0.,

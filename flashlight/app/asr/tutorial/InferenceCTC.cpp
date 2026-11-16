@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
     auto inputLen = fl::full({1}, input.dim(0));
     auto rawEmission = fl::pkg::runtime::forwardSequentialModuleWithPadMask(
         fl::input(input), network, inputLen);
-    auto emission = rawEmission.tensor().toHostVector<float>();
+    auto emission = rawEmission.toHostVectorSync<float>();
 
     const auto& result = decoder.decode(
         emission.data(),

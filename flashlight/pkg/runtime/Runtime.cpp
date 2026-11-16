@@ -37,8 +37,8 @@ std::string serializeGflags(const std::string& separator) {
 }
 
 bool backwardWithScaling(
-    const fl::Variable& loss,
-    std::vector<fl::Variable>& params,
+    const fl::Tensor& loss,
+    std::vector<fl::Tensor>& params,
     std::shared_ptr<fl::pkg::runtime::DynamicScaler> dynamicScaler,
     std::shared_ptr<fl::Reducer> reducer) {
   auto scaledLoss = loss;

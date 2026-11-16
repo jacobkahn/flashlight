@@ -17,8 +17,6 @@ namespace app {
 namespace benchmark {
 
 void init() {
-  fl::DynamicBenchmark::setBenchmarkMode(true);
-  fl::OptimMode::get().setOptimLevel(fl::OptimLevel::DEFAULT);
 }
 
 void printInfo(

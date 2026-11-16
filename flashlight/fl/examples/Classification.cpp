@@ -10,7 +10,8 @@
 #include "flashlight/fl/optim/optim.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
-#include <fmt/core.h>
+#include <format>
+#include <iostream>
 #include "flashlight/fl/tensor/Random.h"
 
 using namespace fl;
@@ -39,7 +40,7 @@ int main(int /* unused */, const char** /* unused */) {
 
   auto sgd = SGDOptimizer(model.params(), 0.1);
 
-  Variable result, l;
+  Tensor result, l;
 
   /* Train */
   int nepochs = 1000, warmup_epochs = 10;
@@ -72,11 +73,11 @@ int main(int /* unused */, const char** /* unused */) {
   model.eval();
   result = model(input(in_));
   l = criterion(result, noGrad(out_));
-  auto loss = l.tensor();
+  auto loss = l;
   std::cout << "Loss: " << loss << std::endl;
   Tensor max_value, prediction;
-  fl::max(max_value, prediction, result.tensor(), 0);
+  fl::max(max_value, prediction, result, 0);
   auto accuracy = mean(prediction == fl::transpose(label, {1, 0}), {0});
   std::cout << "Accuracy: " << accuracy << std::endl;
-  fmt::print("Time/iteration: {:.5f} msec\n", e * 1000.0 / (nepochs - warmup_epochs));
+  std::cout << std::format("Time/iteration: {:.5f} msec\n", e * 1000.0 / (nepochs - warmup_epochs));
 }

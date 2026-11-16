@@ -10,7 +10,7 @@
 
 #include <flashlight/lib/sequence/criterion/cpu/ForceAlignmentCriterion.h>
 
-using fl::Variable;
+using fl::Tensor;
 using FAC = fl::lib::cpu::ForceAlignmentCriterion<float>;
 
 namespace {
@@ -27,8 +27,8 @@ namespace pkg {
 namespace speech {
 
 static void backward(
-    std::vector<Variable>& inputs,
-    const Variable& gradVar,
+    std::vector<Tensor>& inputs,
+    const Tensor& gradVar,
     int B,
     int T,
     int N,
@@ -38,7 +38,7 @@ static void backward(
     throw std::invalid_argument("FAC: grad must be float32");
   }
 
-  auto gradVec = gradVar.tensor().toHostVector<float>();
+  auto gradVec = gradVar.toHostVectorSync<float>();
   std::vector<float> inputGradVec(B * T * N);
   std::vector<float> transGradVec(N * N);
 
@@ -57,13 +57,13 @@ static void backward(
   auto inputGrad = Tensor::fromVector({N, T, B}, inputGradVec);
   auto transGrad = Tensor::fromVector({N, N}, transGradVec);
 
-  inputs[0].addGrad(Variable(inputGrad, false));
-  inputs[1].addGrad(Variable(transGrad, false));
+  inputs[0].addGrad(Tensor(inputGrad, false));
+  inputs[1].addGrad(Tensor(transGrad, false));
 }
 
-Variable ForceAlignmentCriterion::forward(
-    const Variable& inputVar,
-    const Variable& targetVar) {
+Tensor ForceAlignmentCriterion::forward(
+    const Tensor& inputVar,
+    const Tensor& targetVar) {
   const auto& transVar = param(0);
   int B = inputVar.dim(2);
   int T = inputVar.dim(1);
@@ -81,12 +81,12 @@ Variable ForceAlignmentCriterion::forward(
         "ForceAlignmentCriterion(cpu)::forward: target must be int32");
   }
 
-  const auto& targetSize = getTargetSizeArray(targetVar.tensor(), T);
+  const auto& targetSize = getTargetSizeArray(targetVar, T);
   auto ctx = std::make_shared<Context>();
-  auto inputVec = inputVar.tensor().toHostVector<float>();
-  ctx->targetVec = targetVar.tensor().toHostVector<int>();
-  ctx->targetSizeVec = targetSize.toHostVector<int>();
-  auto transVec = transVar.tensor().toHostVector<float>();
+  auto inputVec = inputVar.toHostVectorSync<float>();
+  ctx->targetVec = targetVar.toHostVectorSync<int>();
+  ctx->targetSizeVec = targetSize.toHostVectorSync<int>();
+  auto transVec = transVar.toHostVectorSync<float>();
   std::vector<float> lossVec(B);
   ctx->workspaceVec.assign(FAC::getWorkspaceSize(B, T, N, L), 0);
 
@@ -103,10 +103,10 @@ Variable ForceAlignmentCriterion::forward(
       lossVec.data(),
       ctx->workspaceVec.data());
 
-  return Variable(
+  return Tensor(
       Tensor::fromVector(lossVec),
       {inputVar.withoutData(), transVar.withoutData()},
-      [=](std::vector<Variable>& inputs, const Variable& gradVar) {
+      [=](std::vector<Tensor>& inputs, const Tensor& gradVar) {
         backward(inputs, gradVar, B, T, N, L, ctx);
       });
 }
@@ -114,7 +114,7 @@ Variable ForceAlignmentCriterion::forward(
 Tensor ForceAlignmentCriterion::viterbiPath(
     const Tensor& input,
     const Tensor& target) {
-  const Tensor& trans = param(0).tensor();
+  const Tensor& trans = param(0);
   int N = input.dim(0); // Number of output tokens
   int T = input.dim(1); // Utterance length
   int B = input.dim(2); // Batchsize
@@ -129,10 +129,10 @@ Tensor ForceAlignmentCriterion::viterbiPath(
   }
   const Tensor targetSize = getTargetSizeArray(target, T);
   std::shared_ptr<Context> ctx = std::make_shared<Context>();
-  std::vector<float> inputVec = input.toHostVector<float>();
-  ctx->targetVec = target.toHostVector<int>();
-  ctx->targetSizeVec = targetSize.toHostVector<int>();
-  std::vector<float> transVec = trans.toHostVector<float>();
+  std::vector<float> inputVec = input.toHostVectorSync<float>();
+  ctx->targetVec = target.toHostVectorSync<int>();
+  ctx->targetSizeVec = targetSize.toHostVectorSync<int>();
+  std::vector<float> transVec = trans.toHostVectorSync<float>();
   std::vector<float> lossVec(B);
   ctx->workspaceVec.assign(FAC::getWorkspaceSize(B, T, N, L), 0);
   std::vector<int> bestPaths(B * T);

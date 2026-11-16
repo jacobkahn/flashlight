@@ -9,7 +9,7 @@
 
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -37,7 +37,7 @@ class FL_API NAGOptimizer : public FirstOrderOptimizer {
    * parameters.
    */
   NAGOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate,
       float momentum = 0.99,
       float weightDecay = 0);

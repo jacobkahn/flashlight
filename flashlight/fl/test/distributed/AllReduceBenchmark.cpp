@@ -15,7 +15,7 @@
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/Init.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace fl;
 

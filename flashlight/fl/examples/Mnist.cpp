@@ -34,6 +34,7 @@
 #include "flashlight/fl/tensor/Random.h"
 
 using namespace fl;
+using fl::autograd::categoricalCrossEntropy;
 
 namespace {
 const int TRAIN_SIZE = 60000;
@@ -56,16 +57,16 @@ std::pair<double, double> eval_loop(Sequential& model, BatchDataset& dataset) {
 
     // Get the predictions in max_ids
     Tensor max_vals, max_ids;
-    max(max_vals, max_ids, output.tensor(), 0);
+    max(max_vals, max_ids, output, 0);
 
     auto target = noGrad(example[TARGET_IDX]);
 
     // Compute and record the prediction error.
-    error_meter.add(transpose(max_ids, {1, 0}), target.tensor());
+    error_meter.add(transpose(max_ids, {1, 0}), target);
 
     // Compute and record the loss.
     auto loss = categoricalCrossEntropy(output, target);
-    loss_meter.add(loss.tensor().scalar<float>());
+    loss_meter.add(loss.scalarSync<float>());
   }
   // Place the model back into train mode.
   model.train();
@@ -150,18 +151,18 @@ int main(int argc, char** argv) {
 
     // Get an iterator over the data
     for (auto& example : trainset) {
-      // Make a Variable from the input tensor.
+      // Make a Tensor from the input tensor.
       auto inputs = noGrad(example[INPUT_IDX]);
 
       // Get the activations from the model.
       auto output = model(inputs);
 
-      // Make a Variable from the target tensor.
+      // Make a Tensor from the target tensor.
       auto target = noGrad(example[TARGET_IDX]);
 
       // Compute and record the loss.
       auto loss = categoricalCrossEntropy(output, target);
-      train_loss_meter.add(loss.tensor().scalar<float>());
+      train_loss_meter.add(loss.scalarSync<float>());
 
       // Backprop, update the weights and then zero the gradients.
       loss.backward();

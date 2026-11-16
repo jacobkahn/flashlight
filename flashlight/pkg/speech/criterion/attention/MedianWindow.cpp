@@ -17,8 +17,8 @@ namespace fl::pkg::speech {
 MedianWindow::MedianWindow() = default;
 MedianWindow::MedianWindow(int wL, int wR) : wL_(wL), wR_(wR) {}
 
-Variable MedianWindow::computeWindow(
-    const Variable& prevAttn, // [1, windowsize, batchSize]
+Tensor MedianWindow::computeWindow(
+    const Tensor& prevAttn, // [1, windowsize, batchSize]
     int step,
     int targetLen,
     int inputSteps,
@@ -41,12 +41,12 @@ Variable MedianWindow::computeWindow(
     maskArray(indicesAdd >= fl::tile(inputNotPaddedSize, {1, inputSteps})) =
         0.0;
     // [1, inputSteps, batchSize]
-    return Variable(fl::log(maskArray), false);
+    return Tensor(fl::log(maskArray), false);
   }
 
   auto mIdx =
       fl::sum(
-          fl::cumsum(prevAttn.tensor(), 1) < 0.5, {1}, /* keepDims = */ true)
+          fl::cumsum(prevAttn, 1) < 0.5, {1}, /* keepDims = */ true)
           .astype(fl::dtype::s32);
   auto startIdx = mIdx - wL_;
 
@@ -78,10 +78,10 @@ Variable MedianWindow::computeWindow(
   // force all -inf values to be kAttentionMaskValue to avoid nan in softmax
   maskArray(maskArray < kAttentionMaskValue) = kAttentionMaskValue;
   // [1, inputSteps, batchSize]
-  return Variable(maskArray, false);
+  return Tensor(maskArray, false);
 }
 
-Variable MedianWindow::computeVectorizedWindow(
+Tensor MedianWindow::computeVectorizedWindow(
     int /* unused */,
     int /* unused */,
     int /* unused */,

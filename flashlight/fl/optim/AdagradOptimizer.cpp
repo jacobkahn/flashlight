@@ -14,7 +14,7 @@
 namespace fl {
 
 AdagradOptimizer::AdagradOptimizer(
-    const std::vector<Variable>& parameters,
+    const std::vector<Tensor>& parameters,
     float learningRate /* = 1.0 */,
     float epsilon /* = 1e-8 */,
     float weightDecay /* = 0 */)
@@ -34,8 +34,8 @@ void AdagradOptimizer::step() {
       continue;
     }
 
-    const Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    const Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
     Tensor& variance = variance_[i];
 
     if (wd_ != 0) {

@@ -7,7 +7,9 @@
 
 #pragma once
 
+#include <memory>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
 
 #include "flashlight/fl/common/Defines.h"
@@ -15,10 +17,12 @@
 namespace fl {
 
 class Device;
+class Event;
 
 enum class StreamType {
   CUDA,
   Synchronous,
+  AsyncCPU,
 };
 
 /**
@@ -47,7 +51,7 @@ class FL_API Stream {
    */
   template <typename T>
   const T& impl() const {
-    if (T::type != type()) {
+    if (T::streamType != type()) {
       throw std::invalid_argument(
           "[fl::Stream::impl] "
           "specified stream type doesn't match actual stream type.");
@@ -99,13 +103,18 @@ class FL_API Stream {
    */
   virtual void relativeSync(
       const std::unordered_set<const Stream*>& waitOns) const;
+
+  /**
+   * Record and return an Event marking the current point in this stream.
+   */
+  virtual Event createEvent() const = 0;
 };
 
 /**
  * A trait for some generic stream functionalities.
  *
  * REQUIRED definition in derived class:
- *   static StreamType type;
+ *   static constexpr StreamType streamType;
  */
 template <typename Derived>
 class StreamTrait : public Stream {
@@ -117,12 +126,12 @@ class StreamTrait : public Stream {
   virtual void relativeSync(const Derived& waitOn) const = 0;
 
   StreamType type() const override {
-    return Derived::type;
+    return Derived::streamType;
   }
 
   virtual void relativeSync(const Stream& waitOn) const override {
     switch (waitOn.type()) {
-      case Derived::type:
+      case Derived::streamType:
         relativeSync(waitOn.impl<Derived>());
         break;
       default:
@@ -131,5 +140,31 @@ class StreamTrait : public Stream {
     }
   }
 };
+
+/**
+ * Type-checked downcast of a shared_ptr<const Stream> to a concrete stream
+ * type. Throws std::invalid_argument if the stream's runtime type doesn't
+ * match T::streamType.
+ *
+ * Example:
+ *   auto cudaStream = streamAs<CUDAStream>(someStream);
+ *   cudaStream_t h = cudaStream->handle();
+ */
+template <typename T>
+std::shared_ptr<T> streamAs(std::shared_ptr<const Stream> s) {
+  if (!s) {
+    throw std::invalid_argument(
+        "[fl::streamAs] null stream pointer");
+  }
+  if (s->type() != T::streamType) {
+    throw std::invalid_argument(
+        "[fl::streamAs] stream type mismatch: expected " +
+        std::to_string(static_cast<int>(T::streamType)) +
+        " but got " +
+        std::to_string(static_cast<int>(s->type())));
+  }
+  return std::const_pointer_cast<T>(
+      std::static_pointer_cast<const T>(std::move(s)));
+}
 
 } // namespace fl

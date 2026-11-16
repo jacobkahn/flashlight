@@ -22,7 +22,7 @@
 #include "flashlight/fl/flashlight.h"
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/Index.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/lib/text/decoder/lm/KenLM.h"
 #include "flashlight/lib/text/dictionary/Dictionary.h"
 #include "flashlight/lib/text/dictionary/Utils.h"
@@ -177,8 +177,6 @@ int main(int argc, char** argv) {
   }
 
   fl::setSeed(FLAGS_seed);
-  fl::DynamicBenchmark::setBenchmarkMode(FLAGS_fl_benchmark_mode);
-
   std::shared_ptr<fl::Reducer> reducer;
   if (FLAGS_enable_distributed) {
     fl::pkg::runtime::initDistributed(
@@ -211,21 +209,9 @@ int main(int argc, char** argv) {
     fl::detail::setMemMgrFlushInterval(FLAGS_fl_log_mem_ops_interval);
   }
 
-  // flashlight optim mode
-  auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-      ? fl::OptimLevel::DEFAULT
-      : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-  fl::OptimMode::get().setOptimLevel(flOptimLevel);
   std::shared_ptr<fl::pkg::runtime::DynamicScaler> dynamicScaler;
   if (FLAGS_fl_amp_use_mixed_precision) {
-    // Only set the optim mode to O1 if it was left empty
     LOG(INFO) << "Mixed precision training enabled. Will perform loss scaling.";
-    if (FLAGS_fl_optim_mode.empty()) {
-      LOG(INFO) << "Mixed precision training enabled with no "
-                   "optim mode specified - setting optim mode to O1.";
-      fl::OptimMode::get().setOptimLevel(fl::OptimLevel::O1);
-    }
-
     dynamicScaler = std::make_shared<fl::pkg::runtime::DynamicScaler>(
         FLAGS_fl_amp_scale_factor,
         FLAGS_fl_amp_max_scale_factor,
@@ -747,8 +733,8 @@ int main(int argc, char** argv) {
                              ->viterbiPath(
                                  op(fl::span, fl::span, b),
                                  inputSizes(fl::span, fl::range(b, b + 1)))
-                             .toHostVector<int>();
-      auto tgtraw = tgt.toHostVector<int>();
+                             .toHostVectorSync<int>();
+      auto tgtraw = tgt.toHostVectorSync<int>();
 
       // Remove `-1`s appended to the target for batching (if any)
       auto labellen = getTargetSize(tgtraw.data(), tgtraw.size());
@@ -858,8 +844,8 @@ int main(int argc, char** argv) {
           fl::allReduce(currentEditDist);
           fl::allReduce(currentTokens);
         }
-        double wer = static_cast<double>(currentEditDist.scalar<long long>()) /
-            currentTokens.scalar<long long>() * 100.0;
+        double wer = static_cast<double>(currentEditDist.scalarSync<long long>()) /
+            currentTokens.scalarSync<long long>() * 100.0;
         FL_LOG_MASTER(INFO)
             << "[Beam-search decoder]   * DM: lmweight=" << lmweights[i]
             << " WER: " << wer;
@@ -874,7 +860,7 @@ int main(int argc, char** argv) {
     }
 
     for (auto& batch : *curValidset) {
-      fl::Variable output;
+      fl::Tensor output;
       if (usePlugin) {
         output = ntwrk
                      ->forward(
@@ -885,15 +871,15 @@ int main(int argc, char** argv) {
         output = fl::pkg::runtime::forwardSequentialModuleWithPadMask(
             fl::input(batch[kInputIdx]), ntwrk, batch[kDurationIdx]);
       }
-      std::vector<fl::Variable> critArgs = {
-          output, fl::Variable(batch[kTargetIdx], false)};
+      std::vector<fl::Tensor> critArgs = {
+          output, fl::Tensor(batch[kTargetIdx], false)};
       if (isSeq2seqCrit) {
         critArgs.emplace_back(batch[kDurationIdx], false);
         critArgs.emplace_back(batch[kTargetSizeIdx], false);
       }
       auto loss = crit->forward(critArgs).front();
-      mtrs.loss.add(loss.tensor());
-      evalOutput(output.tensor(), batch[kTargetIdx], batch[kDurationIdx], mtrs);
+      mtrs.loss.add(loss);
+      evalOutput(output, batch[kTargetIdx], batch[kDurationIdx], mtrs);
     }
   };
 
@@ -1093,7 +1079,7 @@ int main(int argc, char** argv) {
               curBatch >= FLAGS_saug_start_update) {
             input = saug->forward({input}).front();
           }
-          fl::Variable output;
+          fl::Tensor output;
           if (usePlugin) {
             output = ntwrk->forward({input, fl::noGrad(batch[kDurationIdx])})
                          .front();
@@ -1105,8 +1091,8 @@ int main(int argc, char** argv) {
 
           // forward crit
           meters.critfwdtimer.resume();
-          std::vector<fl::Variable> critArgs = {
-              output, fl::Variable(batch[kTargetIdx], false)};
+          std::vector<fl::Tensor> critArgs = {
+              output, fl::Tensor(batch[kTargetIdx], false)};
           if (isSeq2seqCrit) {
             critArgs.emplace_back(batch[kDurationIdx], false);
             critArgs.emplace_back(batch[kTargetSizeIdx], false);
@@ -1116,8 +1102,8 @@ int main(int argc, char** argv) {
           meters.fwdtimer.stopAndIncUnit();
           meters.critfwdtimer.stopAndIncUnit();
 
-          if (fl::any(fl::isnan(loss.tensor())).asScalar<bool>() ||
-              fl::any(fl::isinf(loss.tensor())).asScalar<bool>()) {
+          if (fl::any(fl::isnan(loss)).asScalar<bool>() ||
+              fl::any(fl::isinf(loss)).asScalar<bool>()) {
             LOG(FATAL) << "Loss has NaN values. Samples - "
                        << join(",", readSampleIds(batch[kSampleIdx]));
           }
@@ -1125,7 +1111,7 @@ int main(int argc, char** argv) {
           if (hasher(join(",", readSampleIds(batch[kSampleIdx]))) % 100 <=
               FLAGS_pcttraineval) {
             evalOutput(
-                output.tensor(),
+                output,
                 batch[kTargetIdx],
                 batch[kDurationIdx],
                 meters.train);
@@ -1143,7 +1129,7 @@ int main(int argc, char** argv) {
           if (reducer) {
             fl::allReduce(totalBatchSizeArr);
           }
-          totalBatchSize = totalBatchSizeArr.scalar<float>();
+          totalBatchSize = totalBatchSizeArr.scalarSync<float>();
           auto scaledLoss = loss / totalBatchSize;
           bool scaleIsValid = fl::pkg::runtime::backwardWithScaling(
               scaledLoss, params, dynamicScaler, reducer);
@@ -1153,7 +1139,7 @@ int main(int argc, char** argv) {
             continue;
           }
 
-          meters.train.loss.add(loss.tensor());
+          meters.train.loss.add(loss);
           break;
         }
 

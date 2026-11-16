@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 option(FL_BUILD_DISTRIBUTED
   "Build distributed computation capabilities with Flashlight" ON)
 
@@ -15,7 +13,13 @@ else()
   # Default building distributed backends to ON if using corresponding compute
   # environment is enabled
   set(_build_nccl_default ${FL_USE_CUDA})
-  set(_build_gloo_default ${FL_USE_CPU})
+  # The CPU backend is built alongside CUDA by default; only one distributed
+  # backend can be built, so Gloo defaults on only for CPU-only builds.
+  if (FL_USE_CPU AND NOT FL_USE_CUDA)
+    set(_build_gloo_default TRUE)
+  else()
+    set(_build_gloo_default FALSE)
+  endif()
 endif()
 
 option(FL_USE_NCCL "Build with NCCL for distributed computation" ${_build_nccl_default})

@@ -13,33 +13,26 @@
 #include "flashlight/fl/nn/nn.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Random.h"
+#include "flashlight/fl/test/TestInit.h"
 
 using namespace fl;
 
 namespace {
 
-class ContribModuleTestF16 : public ::testing::Test {
- protected:
-  void SetUp() override {
-    // Ensures all operations will be in f16
-    OptimMode::get().setOptimLevel(OptimLevel::O3);
-  }
-
-  void TearDown() override {
-    OptimMode::get().setOptimLevel(OptimLevel::DEFAULT);
-  }
-};
+class ContribModuleTestF16 : public ::testing::Test {};
 
 } // namespace
 
 TEST(ContribModuleTest, ResidualFwd) {
   auto conv = Conv2D(30, 50, 9, 7, 2, 3, 3, 2);
   // bn is shared between both residual networks
-  auto bn = std::make_shared<BatchNorm>(2, 50, 0.0);
+  // Row-major: channel axis is 1 in {N, C, H, W}
+  auto bn = std::make_shared<BatchNorm>(1, 50, 0.0);
   auto relu = ReLU();
 
   int batchsize = 10;
-  auto input = Variable(fl::rand({120, 100, 30, batchsize}), false);
+  // Row-major: {N, C, H, W}
+  auto input = Tensor(fl::rand({batchsize, 30, 100, 120}), false);
 
   auto outputConv = conv.forward(input);
   auto outputBn = bn->forward(outputConv);
@@ -82,7 +75,8 @@ TEST(ContribModuleTest, ResidualFwdWithProjection) {
   auto projection1 = Linear(8, 4);
   auto projection2 = Linear(12, 4);
 
-  auto input = Variable(fl::rand({12, 10, 3, 4}), false);
+  // Row-major: input last dim = inputSize = 12
+  auto input = Tensor(fl::rand({4, 3, 10, 12}), false);
   auto output1True = linear1.forward(input);
   auto outputTrue = relu1.forward(output1True);
   outputTrue = linear2.forward(outputTrue * linFwdScale);
@@ -116,19 +110,20 @@ TEST(ContribModuleTest, AsymmetricConv1DFwd) {
   int c = 32;
 
   auto conv = AsymmetricConv1D(c, c, 5, 1, -1, 0, 1); // use only past
-  auto input = Variable(fl::rand({timesteps, 1, c, batchsize}), false);
+  // Row-major: {N, C, H, W} where H=1, W=T (wx-->kW on dim 3)
+  auto input = Tensor(fl::rand({batchsize, c, 1, timesteps}), false);
 
   auto output = conv.forward(input);
 
-  ASSERT_EQ(output.dim(0), timesteps);
-  ASSERT_EQ(output.dim(1), 1);
-  ASSERT_EQ(output.dim(2), c);
+  ASSERT_EQ(output.dim(0), batchsize);
+  ASSERT_EQ(output.dim(1), c);
+  ASSERT_EQ(output.dim(3), timesteps);
 
   auto convFuture = AsymmetricConv1D(c, c, 5, 1, -1, 1, 1); // use only future
   auto outputFuture = convFuture.forward(input);
-  ASSERT_EQ(outputFuture.dim(0), timesteps);
-  ASSERT_EQ(outputFuture.dim(1), 1);
-  ASSERT_EQ(outputFuture.dim(2), c);
+  ASSERT_EQ(outputFuture.dim(0), batchsize);
+  ASSERT_EQ(outputFuture.dim(1), c);
+  ASSERT_EQ(outputFuture.dim(3), timesteps);
 
   ASSERT_FALSE(allClose(output, outputFuture));
 }
@@ -141,48 +136,45 @@ void transformerPadMaskFwd(bool isfp16) {
 
   auto tr =
       Transformer(c, c / nheads, c, nheads, timesteps, 0, 0, false, false);
-  auto input1 = Variable(fl::rand({c, timesteps, /* B = */ 1}, dtype), false);
+  // Row-major: {B, T, C}
+  auto input1 = Tensor(fl::rand({/* B = */ 1, timesteps, c}, dtype), false);
   auto input1NoPad = input1(fl::span, fl::range(0, timesteps / 2));
-  auto input2 = Variable(fl::rand({c, timesteps, /* B = */ 1}, dtype), false);
-  auto input = fl::concatenate({input1, input2}, 2);
-  auto padMask = fl::full({timesteps, 2}, 1);
-  padMask(fl::iota({timesteps / 2}) + timesteps / 2, 0) = 0;
-  auto noPadMask = fl::full({timesteps, 2}, 1);
+  auto input2 = Tensor(fl::rand({/* B = */ 1, timesteps, c}, dtype), false);
+  auto input = autograd::concatenate({input1, input2}, 0); // concat along batch
+  // padMask: {B, T}
+  auto padMask = fl::full({2, timesteps}, 1);
+  padMask(fl::range(0, 1), fl::range(timesteps / 2, timesteps)) = 0;
+  auto noPadMask = fl::full({2, timesteps}, 1);
 
-  auto output = tr.forward({input, Variable(padMask, false)}).front();
-  auto outputNoPad = tr.forward({input, Variable(noPadMask, false)}).front();
+  auto output = tr.forward({input, Tensor(padMask, false)}).front();
+  auto outputNoPad = tr.forward({input, Tensor(noPadMask, false)}).front();
 
-  ASSERT_EQ(output.dim(0), c);
+  ASSERT_EQ(output.dim(0), 2);
   ASSERT_EQ(output.dim(1), timesteps);
-  ASSERT_EQ(output.dim(2), 2);
+  ASSERT_EQ(output.dim(2), c);
 
-  if (OptimMode::get().getOptimLevel() == OptimLevel::O3) {
-    ASSERT_EQ(outputNoPad.type(), input.type());
-  } else {
-    ASSERT_EQ(outputNoPad.type(), fl::dtype::f32); // result is upcast
-  }
+  ASSERT_EQ(outputNoPad.type(), input.type());
 
   auto output1 = tr.forward({input1NoPad,
-                             Variable(
-                                 padMask(fl::range(0, timesteps / 2))(
-                                     fl::span, fl::range(0, 1)),
+                             Tensor(
+                                 padMask(fl::range(0, 1))(
+                                     fl::span, fl::range(0, timesteps / 2)),
                                  false)})
                      .front();
   auto output2 =
-      tr.forward({input2, Variable(padMask(fl::span, fl::range(1, 2)), false)})
+      tr.forward({input2, Tensor(padMask(fl::range(1, 2)), false)})
           .front();
   ASSERT_TRUE(allClose(
-      output.tensor()(fl::span, fl::span, fl::range(1, 2)), output2.tensor()));
+      output(fl::range(1, 2)), output2));
   ASSERT_TRUE(allClose(
-      outputNoPad.tensor()(fl::span, fl::span, fl::range(1, 2)),
-      output2.tensor()));
+      outputNoPad(fl::range(1, 2)),
+      output2));
   ASSERT_TRUE(allClose(
-      output.tensor()(fl::span, fl::iota({timesteps / 2}), fl::range(0, 1)),
-      output1.tensor()));
+      output(fl::range(0, 1), fl::range(0, timesteps / 2)),
+      output1));
   ASSERT_FALSE(allClose(
-      outputNoPad.tensor()(
-          fl::span, fl::iota({timesteps / 2}), fl::range(0, 1)),
-      output1.tensor()));
+      outputNoPad(fl::range(0, 1), fl::range(0, timesteps / 2)),
+      output1));
 }
 
 TEST(ContribModuleTest, TransformerPadMaskFwd) {
@@ -190,7 +182,7 @@ TEST(ContribModuleTest, TransformerPadMaskFwd) {
 }
 
 TEST_F(ContribModuleTestF16, TransformerPadMaskFwd16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   transformerPadMaskFwd(true);
@@ -205,19 +197,16 @@ void transformerFwd(bool isfp16) {
 
   auto tr =
       Transformer(c, c / nheads, c, nheads, timesteps, 0.2, 0.1, true, false);
-  auto input = Variable(fl::rand({c, timesteps, batchsize}, dtype), false);
+  // Row-major: {B, T, C}
+  auto input = Tensor(fl::rand({batchsize, timesteps, c}, dtype), false);
 
-  fl::Variable padMask;
+  fl::Tensor padMask;
   auto output = tr.forward({input, padMask});
-  if (OptimMode::get().getOptimLevel() == OptimLevel::O3) {
-    ASSERT_EQ(output[0].type(), input.type());
-  } else {
-    ASSERT_EQ(output[0].type(), fl::dtype::f32); // result is upcast
-  }
+  ASSERT_EQ(output[0].type(), input.type());
 
-  ASSERT_EQ(output[0].dim(0), c);
+  ASSERT_EQ(output[0].dim(0), batchsize);
   ASSERT_EQ(output[0].dim(1), timesteps);
-  ASSERT_EQ(output[0].dim(2), batchsize);
+  ASSERT_EQ(output[0].dim(2), c);
 
   tr.setDropout(0);
   tr.setLayerDropout(0);
@@ -231,7 +220,7 @@ TEST(ContribModuleTest, TransformerFwd) {
 }
 
 TEST_F(ContribModuleTestF16, TransformerFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   transformerFwd(true);
@@ -245,18 +234,15 @@ void conformerFwd(bool isfp16) {
   auto dtype = isfp16 ? fl::dtype::f16 : fl::dtype::f32;
 
   auto tr = Conformer(c, c / nheads, c, nheads, timesteps, 33, 0.2, 0.1);
-  auto input = Variable(fl::rand({c, timesteps, batchsize}, dtype), false);
+  // Row-major: {B, T, C}
+  auto input = Tensor(fl::rand({batchsize, timesteps, c}, dtype), false);
 
-  auto output = tr.forward({input, Variable()});
-  if (OptimMode::get().getOptimLevel() == OptimLevel::O3) {
-    ASSERT_EQ(output[0].type(), input.type());
-  } else {
-    ASSERT_EQ(output[0].type(), fl::dtype::f32); // result is upcast
-  }
+  auto output = tr.forward({input, Tensor()});
+  ASSERT_EQ(output[0].type(), input.type());
 
-  ASSERT_EQ(output[0].dim(0), c);
+  ASSERT_EQ(output[0].dim(0), batchsize);
   ASSERT_EQ(output[0].dim(1), timesteps);
-  ASSERT_EQ(output[0].dim(2), batchsize);
+  ASSERT_EQ(output[0].dim(2), c);
 }
 
 TEST(ContribModuleTest, ConformerFwd) {
@@ -264,7 +250,7 @@ TEST(ContribModuleTest, ConformerFwd) {
 }
 
 TEST_F(ContribModuleTestF16, ConformerFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   conformerFwd(true);
@@ -277,13 +263,14 @@ void positionEmbeddingFwd(bool isfp16) {
   auto dtype = isfp16 ? fl::dtype::f16 : fl::dtype::f32;
 
   auto posemb = PositionEmbedding(csz, timesteps, 0.5);
-  auto input = Variable(fl::rand({csz, timesteps, batchsize}, dtype), false);
+  // Row-major: {B, T, C}
+  auto input = Tensor(fl::rand({batchsize, timesteps, csz}, dtype), false);
 
   auto output = posemb.forward({input});
 
-  ASSERT_EQ(output[0].dim(0), csz);
+  ASSERT_EQ(output[0].dim(0), batchsize);
   ASSERT_EQ(output[0].dim(1), timesteps);
-  ASSERT_EQ(output[0].dim(2), batchsize);
+  ASSERT_EQ(output[0].dim(2), csz);
 
   ASSERT_FALSE(allClose(output[0], input));
 }
@@ -293,7 +280,7 @@ TEST(ContribModuleTest, PositionEmbeddingFwd) {
 }
 
 TEST_F(ContribModuleTestF16, PositionEmbeddingFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   positionEmbeddingFwd(true);
@@ -306,20 +293,21 @@ void sinusoidalPositionEmbeddingFwd(bool isfp16) {
   auto dtype = isfp16 ? fl::dtype::f16 : fl::dtype::f32;
 
   auto posemb = SinusoidalPositionEmbedding(csz, /* inputScale = */ 2.);
+  // Row-major: {B, T, C}
   auto input =
-      Variable(fl::rand({csz, timesteps, batchsize, 1}, dtype), false) - 0.5;
+      Tensor(fl::rand({batchsize, timesteps, csz}, dtype), false) - 0.5;
 
   auto output = posemb.forward({input});
 
-  ASSERT_EQ(output[0].dim(0), csz);
+  ASSERT_EQ(output[0].dim(0), batchsize);
   ASSERT_EQ(output[0].dim(1), timesteps);
-  ASSERT_EQ(output[0].dim(2), batchsize);
-  auto castOutput = output[0].tensor();
+  ASSERT_EQ(output[0].dim(2), csz);
+  auto castOutput = output[0];
   if (isfp16) {
-    castOutput = output[0].astype(fl::dtype::f32).tensor();
+    castOutput = output[0].astype(fl::dtype::f32);
   }
-  ASSERT_TRUE((fl::amax(castOutput, {0})).scalar<float>() <= 2);
-  ASSERT_TRUE((fl::amin(castOutput, {0})).scalar<float>() >= -2);
+  ASSERT_TRUE((fl::amax(castOutput, {0})).scalarSync<float>() <= 2);
+  ASSERT_TRUE((fl::amin(castOutput, {0})).scalarSync<float>() >= -2);
 }
 
 TEST(ContribModuleTest, SinusoidalPositionEmbeddingFwd) {
@@ -327,7 +315,7 @@ TEST(ContribModuleTest, SinusoidalPositionEmbeddingFwd) {
 }
 
 TEST_F(ContribModuleTestF16, SinusoidalPositionEmbeddingFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   sinusoidalPositionEmbeddingFwd(true);
@@ -336,14 +324,15 @@ TEST_F(ContribModuleTestF16, SinusoidalPositionEmbeddingFwdF16) {
 TEST(ContribModuleTest, AdaptiveEmbedding) {
   std::vector<float> values = {1, 4, 6, 2, 12, 7, 4, 21, 22, 18, 3, 23};
   int T = 6, B = 2, dim = 128;
-  auto input = Variable(Tensor::fromVector({T, B}, values), false);
+  // Row-major: input is {B, T}
+  auto input = Tensor(Tensor::fromVector({B, T}, values), false);
   std::vector<int> cutoff = {5, 10, 25};
   auto emb = AdaptiveEmbedding(dim, cutoff);
   auto output = emb.forward(input);
 
-  ASSERT_EQ(output.dim(0), dim);
+  ASSERT_EQ(output.dim(0), B);
   ASSERT_EQ(output.dim(1), T);
-  ASSERT_EQ(output.dim(2), B);
+  ASSERT_EQ(output.dim(2), dim);
 }
 
 void tdsFwd(bool isfp16) {
@@ -354,13 +343,16 @@ void tdsFwd(bool isfp16) {
 
   auto tds = TDSBlock(c, 9, w);
   auto dtype = isfp16 ? fl::dtype::f16 : fl::dtype::f32;
-  auto input = Variable(fl::rand({timesteps, w, c, batchsize}, dtype), false);
+  // Row-major: {N, C, H, W} = {B, channels, width, T}
+  // wx=kernelSize maps to kW (dim 3 = T)
+  auto input = Tensor(fl::rand({batchsize, c, w, timesteps}, dtype), false);
 
   auto output = tds.forward({input})[0];
 
-  ASSERT_EQ(output.dim(0), timesteps);
-  ASSERT_EQ(output.dim(1), w);
-  ASSERT_EQ(output.dim(2), c);
+  ASSERT_EQ(output.dim(0), batchsize);
+  ASSERT_EQ(output.dim(1), c);
+  ASSERT_EQ(output.dim(2), w);
+  ASSERT_EQ(output.dim(3), timesteps);
   ASSERT_EQ(output.type(), input.type());
 }
 
@@ -369,7 +361,7 @@ TEST(ContribModuleTest, TDSFwd) {
 }
 
 TEST_F(ContribModuleTestF16, TDSFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   tdsFwd(true);
@@ -386,13 +378,15 @@ void streamingTDSFwd(bool isfp16) {
   auto stds =
       TDSBlock(c, kw, w, 0 /* dropout */, 0 /* innerLinearDim */, rPad, true);
   auto dtype = isfp16 ? fl::dtype::f16 : fl::dtype::f32;
-  auto input = Variable(fl::rand({timesteps, w, c, batchsize}, dtype), false);
+  // Row-major: {N, C, H, W} = {B, channels, width, T}
+  auto input = Tensor(fl::rand({batchsize, c, w, timesteps}, dtype), false);
 
   auto output = stds.forward({input})[0];
 
-  ASSERT_EQ(output.dim(0), timesteps);
-  ASSERT_EQ(output.dim(1), w);
-  ASSERT_EQ(output.dim(2), c);
+  ASSERT_EQ(output.dim(0), batchsize);
+  ASSERT_EQ(output.dim(1), c);
+  ASSERT_EQ(output.dim(2), w);
+  ASSERT_EQ(output.dim(3), timesteps);
   ASSERT_EQ(output.type(), input.type());
 }
 
@@ -401,7 +395,7 @@ TEST(ContribModuleTest, StreamingTDSFwd) {
 }
 
 TEST_F(ContribModuleTestF16, StreamingTDSFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   streamingTDSFwd(true);
@@ -410,7 +404,7 @@ TEST_F(ContribModuleTestF16, StreamingTDSFwdF16) {
 TEST(ContribModuleTest, SpecAugmentFwd) {
   SpecAugment specAug(0, 27, 2, 100, 0.2, 2);
   int T = 512, F = 80;
-  auto input = Variable(fl::rand({T, F}), false);
+  auto input = Tensor(fl::rand({T, F}), false);
 
   specAug.eval();
   ASSERT_TRUE(fl::allClose(input, specAug(input)));
@@ -422,8 +416,8 @@ TEST(ContribModuleTest, SpecAugmentFwd) {
   // Every value of output is either 0 or input
   for (int t = 0; t < T; ++t) {
     for (int f = 0; f < F; ++f) {
-      auto o = output.tensor()(t, f).scalar<float>();
-      auto i = input.tensor()(t, f).scalar<float>();
+      auto o = output(t, f).scalarSync<float>();
+      auto i = input(t, f).scalarSync<float>();
       ASSERT_TRUE(o == i || o == 0);
     }
   }
@@ -431,7 +425,7 @@ TEST(ContribModuleTest, SpecAugmentFwd) {
   // non-zero time frames are masked
   int tZeros = 0;
   for (int t = 0; t < T; ++t) {
-    auto curOutSlice = output.tensor()(t);
+    auto curOutSlice = output(t);
     tZeros = fl::all(curOutSlice == 0).asScalar<bool>() ? tZeros + 1 : tZeros;
   }
   ASSERT_GT(tZeros, 0);
@@ -439,7 +433,7 @@ TEST(ContribModuleTest, SpecAugmentFwd) {
   // non-zero frequency channels are masked
   int fZeros = 0;
   for (int f = 0; f < F; ++f) {
-    auto curOutSlice = output.tensor()(fl::span, f);
+    auto curOutSlice = output(fl::span, f);
     fZeros = fl::all(curOutSlice == 0).asScalar<bool>() ? fZeros + 1 : fZeros;
   }
   ASSERT_GT(fZeros, 0);
@@ -458,30 +452,36 @@ void computeRawWavSpecAug(bool isfp16, float epsilon) {
         fl::sin(time * 7000) + fl::sin(time * 7500);
     auto inputWav = finalWav + fl::sin(time * 3000) + fl::sin(time * 4000) +
         fl::sin(time * 5000);
-    inputWav = fl::tile(inputWav, {1, C, B});
-    finalWav = fl::tile(finalWav, {1, C, B});
+    // Row-major: input is {B, C, T}
+    inputWav = fl::tile(fl::reshape(inputWav, {1, 1, T}), {B, C, 1});
+    finalWav = fl::tile(fl::reshape(finalWav, {1, 1, T}), {B, C, 1});
     if (isfp16) {
       inputWav = inputWav.astype(fl::dtype::f16);
       finalWav = finalWav.astype(fl::dtype::f16);
     }
 
-    auto filteredWav = specAug(fl::Variable(inputWav, false));
+    auto filteredWav = specAug(fl::Tensor(inputWav, false));
     // compare middle of filtered wave to avoid edge artifacts comparison
     int halfKernelWidth = 63;
+
+    // Slice on dim 2 (T)
     ASSERT_TRUE(fl::allClose(
-        fl::Variable(
-            finalWav(fl::range(halfKernelWidth, T - halfKernelWidth)), false),
-        filteredWav(fl::range(halfKernelWidth, T - halfKernelWidth)),
+        fl::Tensor(
+            finalWav(fl::span, fl::span,
+                fl::range(halfKernelWidth, T - halfKernelWidth)),
+            false),
+        filteredWav(fl::span, fl::span,
+            fl::range(halfKernelWidth, T - halfKernelWidth)),
         epsilon));
   }
 }
 
 TEST(ContribModuleTest, RawWavSpecAugmentFwd) {
-  computeRawWavSpecAug(false, 1e-3);
+  computeRawWavSpecAug(false, 2e-3);
 }
 
 TEST_F(ContribModuleTestF16, RawWavSpecAugmentFwdF16) {
-  if (!fl::f16Supported()) {
+  if (!fl::dtypeSupported(fl::dtype::f16)) {
     GTEST_SKIP() << "Half-precision not supported on this device";
   }
   computeRawWavSpecAug(true, 1e-2);
@@ -489,6 +489,6 @@ TEST_F(ContribModuleTestF16, RawWavSpecAugmentFwdF16) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

@@ -64,7 +64,7 @@ class FL_API CUDAStream : public StreamTrait<CUDAStream> {
   // prevent name hiding
   using StreamTrait<CUDAStream>::relativeSync;
 
-  static constexpr StreamType type = StreamType::CUDA;
+  static constexpr StreamType streamType = StreamType::CUDA;
 
   /**
    * Creates an unmanaged wrapper around an existing native CUDA stream and
@@ -115,6 +115,8 @@ class FL_API CUDAStream : public StreamTrait<CUDAStream> {
   const CUDADevice& device() const override;
   void sync() const override;
   void relativeSync(const CUDAStream& waitOn) const override;
+  void relativeSync(const Stream& waitOn) const override;
+  Event createEvent() const override;
 
   /**
    * Get the native CUDA stream handle.

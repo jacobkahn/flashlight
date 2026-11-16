@@ -16,7 +16,7 @@
 #include <type_traits>
 
 #include "flashlight/fl/common/Filesystem.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 #include <cereal/access.hpp>
 #include <cereal/archives/binary.hpp>
@@ -36,7 +36,7 @@ namespace fl {
  * - By default you should use save/load pairs and explicit versioning.
  *   The provided macros encourage this usage.
  * - Saving an object must not mutate it. `save()` being `const` helps, but
- *   be careful about `Variable` which is a `shared_ptr` to non-const.
+ *   be careful about `Tensor` which is a `shared_ptr` to non-const.
  * - Loading an object must provide the basic exception guarantee. After an
  *   exception, the object must be safe to destroy and no leaks can occur.
  * - For simplicity, `load()` may assume that the initial state of the

@@ -29,7 +29,7 @@ class FL_API Normalize : public UnaryModule {
       double eps = 1e-12,
       double value = 1);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

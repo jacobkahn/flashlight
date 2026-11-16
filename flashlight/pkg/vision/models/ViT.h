@@ -64,8 +64,8 @@ class ViT : public fl::Container {
   ViT(ViT&& other) = default;
   ViT& operator=(ViT&& other) = default;
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   std::unique_ptr<Module> clone() const override;
   std::string prettyString() const override;

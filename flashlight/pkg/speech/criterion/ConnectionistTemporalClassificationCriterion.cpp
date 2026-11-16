@@ -85,9 +85,9 @@ Tensor ConnectionistTemporalClassificationCriterion::viterbiPathWithTarget(
   const Tensor targetSize = getTargetSizeArray(target, T);
   std::shared_ptr<CTCContext> ctx = std::make_shared<CTCContext>();
   Tensor softmax = ::logSoftmax(input, 0);
-  std::vector<float> inputVec = softmax.toHostVector<float>();
-  ctx->targetVec = target.toHostVector<int>();
-  ctx->targetSizeVec = targetSize.toHostVector<int>();
+  std::vector<float> inputVec = softmax.toHostVectorSync<float>();
+  ctx->targetVec = target.toHostVectorSync<int>();
+  ctx->targetSizeVec = targetSize.toHostVectorSync<int>();
   ctx->workspaceVec.assign(CTC::getWorkspaceSize(B, T, N, L), 0);
   std::vector<int> bestPaths(B * T);
   CTC::viterbi(
@@ -110,8 +110,8 @@ std::string ConnectionistTemporalClassificationCriterion::prettyString() const {
 }
 
 void ConnectionistTemporalClassificationCriterion::validate(
-    const Variable& input,
-    const Variable& target) {
+    const Tensor& input,
+    const Tensor& target) {
   if (input.isEmpty()) {
     throw std::invalid_argument("CTC: Input cannot be empty");
   }

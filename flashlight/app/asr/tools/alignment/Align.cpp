@@ -194,13 +194,13 @@ int main(int argc, char** argv) {
   for (auto& sample : *ds) {
     fwdMtr.resume();
     const auto input = fl::input(sample[kInputIdx]);
-    fl::Variable rawEmission =
+    fl::Tensor rawEmission =
         fl::pkg::runtime::forwardSequentialModuleWithPadMask(
             input, network, sample[kDurationIdx]);
     fwdMtr.stop();
     alignMtr.resume();
     auto bestPaths = criterion->viterbiPathWithTarget(
-        rawEmission.tensor(), sample[kTargetIdx]);
+        rawEmission, sample[kTargetIdx]);
     alignMtr.stop();
     parseMtr.resume();
 

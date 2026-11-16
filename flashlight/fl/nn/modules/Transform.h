@@ -16,7 +16,7 @@ namespace fl {
  * example to add a \f$ 1 + log(x) \f$ layer to a container:
  * \code
     model.add(
-      Transform([](const Variable& in) {
+      Transform([](const Tensor& in) {
         return 1 + afnet::log(in);
       }
     );
@@ -27,7 +27,7 @@ class FL_API Transform : public UnaryModule {
  private:
   Transform() = default; // Intentionally private
 
-  std::function<Variable(const Variable&)> func_;
+  std::function<Tensor(const Tensor&)> func_;
 
   std::string name_;
 
@@ -40,15 +40,15 @@ class FL_API Transform : public UnaryModule {
  public:
   /**
    * Construct a Transform (lambda) layer.
-   * @param func a lambda function which accepts an input Variable and returns
-   * an output Variable.
+   * @param func a lambda function which accepts an input Tensor and returns
+   * an output Tensor.
    * @param name an optional name used by prettyString.
    */
   explicit Transform(
-      const std::function<Variable(const Variable&)>& func,
+      const std::function<Tensor(const Tensor&)>& func,
       const std::string& name = "");
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

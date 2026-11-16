@@ -73,10 +73,10 @@ TEST(FeaturizationTest, AfMatmulCompare) {
     Tensor b = fl::rand({n, k});
     Tensor c = fl::transpose(
         fl::matmul(a, b, MatrixProperty::Transpose, MatrixProperty::Transpose));
-    auto aVec = a.toHostVector<float>();
-    auto bVec = b.toHostVector<float>();
+    auto aVec = a.toHostVectorSync<float>();
+    auto bVec = b.toHostVectorSync<float>();
     auto cVec = cblasGemm(aVec, bVec, n, k);
-    ASSERT_TRUE(compareVec(cVec, c.toHostVector<float>(), 1E-4));
+    ASSERT_TRUE(compareVec(cVec, c.toHostVectorSync<float>(), 1E-4));
   }
 }
 
@@ -98,7 +98,7 @@ TEST(FeaturizationTest, Normalize) {
         meandiff / fl::tile(stddev, {elementsPerBatch}), in.shape());
   };
   auto arr = fl::rand({13, 17, 19});
-  auto arrVec = arr.toHostVector<float>();
+  auto arrVec = arr.toHostVectorSync<float>();
 
   auto arrVecNrm = normalize(arrVec, 19, threshold);
   auto arrNrm =
@@ -109,7 +109,7 @@ TEST(FeaturizationTest, Normalize) {
 
 TEST(FeaturizationTest, Transpose) {
   auto arr = fl::rand({13, 17, 19, 23});
-  auto arrVec = arr.toHostVector<float>();
+  auto arrVec = arr.toHostVectorSync<float>();
   auto arrVecT = transpose2d<float>(arrVec, 17, 13, 19 * 23);
   auto arrT = Tensor::fromVector({17, 13, 19, 23}, arrVecT);
   ASSERT_TRUE(
@@ -125,8 +125,8 @@ TEST(FeaturizationTest, localNormalize) {
         int64_t e_idx = (in.dim(0) - 1 > i + rw) ? (i + rw) : (in.dim(0) - 1);
 
         Tensor slice = in(fl::range(b_idx, e_idx + 1), fl::span, fl::span, b);
-        auto mean = fl::mean(slice).scalar<float>();
-        auto stddev = fl::std(slice).scalar<float>();
+        auto mean = fl::mean(slice).scalarSync<float>();
+        auto stddev = fl::std(slice).scalarSync<float>();
 
         out(i, fl::span, fl::span, b) -= mean;
         if (stddev > 0.0) {
@@ -137,7 +137,7 @@ TEST(FeaturizationTest, localNormalize) {
     return out;
   };
   auto arr = fl::rand({47, 67, 2, 10}); // FRAMES X FEAT X CHANNELS X BATCHSIZE
-  auto arrVec = arr.toHostVector<float>();
+  auto arrVec = arr.toHostVectorSync<float>();
 
   std::vector<std::pair<int, int>> ctx = {
       {0, 0}, {1, 1}, {2, 2}, {4, 4}, {1024, 1024}, {10, 0}, {2, 12}};
@@ -378,7 +378,7 @@ TEST(FeaturizationTest, inputFeaturizer) {
     ASSERT_EQ(inArray.shape(), Shape({insize, 1, channels}));
     Tensor ch1 = inArray(fl::span, fl::span, 0);
     Tensor ch2 = inArray(fl::span, fl::span, 1);
-    ASSERT_TRUE(fl::amax(fl::abs(ch1 - ch2)).scalar<float>() < 1E-5);
+    ASSERT_TRUE(fl::amax(fl::abs(ch1 - ch2)).scalarSync<float>() < 1E-5);
 
     inArray =
         inputFeaturizerMfsc(input.data(), {channels, insize}, fl::dtype::f32);
@@ -386,7 +386,7 @@ TEST(FeaturizationTest, inputFeaturizer) {
     ASSERT_EQ(inArray.shape(), Shape({nFrames, 40, channels}));
     ch1 = inArray(fl::span, fl::span, 0, fl::span);
     ch2 = inArray(fl::span, fl::span, 1, fl::span);
-    ASSERT_TRUE(fl::amax(fl::abs(ch1 - ch2)).scalar<float>() < 1E-5);
+    ASSERT_TRUE(fl::amax(fl::abs(ch1 - ch2)).scalarSync<float>() < 1E-5);
   }
 }
 
@@ -420,7 +420,7 @@ TEST(FeaturizationTest, targetFeaturizer) {
   ASSERT_EQ(tgtArray.shape(), Shape({tgtLen}));
   ASSERT_EQ(tgtArray.type(), fl::dtype::s32);
   std::vector<int> tgtArrayVec(tgtLen);
-  tgtArray.host(tgtArrayVec.data());
+  tgtArray.hostSync(tgtArrayVec.data());
 
   ASSERT_EQ(tgtArrayVec[0], 0);
   ASSERT_EQ(tgtArrayVec[1], 1);
@@ -447,7 +447,7 @@ TEST(FeaturizationTest, targetFeaturizer) {
   int eosIdx = tokenDict.getIndex(kEosToken);
   ASSERT_EQ(tgtArray.shape(), Shape({tgtLen}));
   ASSERT_EQ(tgtArray.type(), fl::dtype::s32);
-  tgtArray.host(tgtArrayVec.data());
+  tgtArray.hostSync(tgtArrayVec.data());
   ASSERT_EQ(tgtArrayVec[0], 1);
   ASSERT_EQ(tgtArrayVec[1], 2);
   ASSERT_EQ(tgtArrayVec[2], 3);

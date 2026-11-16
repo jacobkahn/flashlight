@@ -8,5 +8,4 @@
 #pragma once
 
 #include "flashlight/fl/autograd/Functions.h"
-#include "flashlight/fl/autograd/Utils.h"
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"

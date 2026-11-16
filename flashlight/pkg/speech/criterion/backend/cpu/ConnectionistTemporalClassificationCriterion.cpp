@@ -19,8 +19,8 @@ namespace fl {
 namespace pkg {
 namespace speech {
 
-std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> ConnectionistTemporalClassificationCriterion::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() != 2) {
     throw std::invalid_argument("Invalid inputs size");
   }
@@ -46,10 +46,10 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
 
     // get host pointers
     std::vector<float> batchInputVec(logprobs.elements());
-    logprobs.host(batchInputVec.data());
+    logprobs.hostSync(batchInputVec.data());
 
     std::vector<int> batchTargetVec(target.elements());
-    target.host(batchTargetVec.data());
+    target.hostSync(batchTargetVec.data());
 
     CriterionUtils::batchTargetSize(
         B, batchL, batchL, batchTargetVec.data(), batchTargetSizes.data());
@@ -125,8 +125,8 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
   auto result = Tensor::fromVector(batchLoss);
 
   auto gradFunc = [batchAlphas, batchScales, batchTargetSizes](
-                      std::vector<Variable>& moduleInputs,
-                      const Variable& gradOutput) {
+                      std::vector<Tensor>& moduleInputs,
+                      const Tensor& gradOutput) {
     const int64_t N = moduleInputs[0].dim(0);
     const int64_t T = moduleInputs[0].dim(1);
     const int64_t B = moduleInputs[0].dim(2);
@@ -135,10 +135,10 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
     std::vector<float> batchInGrad(moduleInputs[0].elements(), 0.0);
 
     std::vector<int> batchTargetVec(moduleInputs[1].elements());
-    moduleInputs[1].host(batchTargetVec.data());
+    moduleInputs[1].hostSync(batchTargetVec.data());
 
     std::vector<float> batchOutGrad(gradOutput.elements());
-    gradOutput.host(batchOutGrad.data());
+    gradOutput.hostSync(batchOutGrad.data());
 
 #pragma omp parallel for num_threads(B)
     for (int64_t b = 0; b < B; ++b) {
@@ -221,9 +221,9 @@ std::vector<Variable> ConnectionistTemporalClassificationCriterion::forward(
       }
     }
     moduleInputs[0].addGrad(
-        Variable(Tensor::fromVector({N, T, B}, batchInGrad), false));
+        Tensor(Tensor::fromVector({N, T, B}, batchInGrad), false));
   };
-  return {Variable(result, {logprobs, target}, gradFunc)};
+  return {Tensor(result, {logprobs, target}, gradFunc)};
 }
 } // namespace speech
 } // namespace pkg

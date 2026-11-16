@@ -57,8 +57,8 @@ std::unique_ptr<Module> PositionalEmbeddingSine::clone() const {
   return std::make_unique<PositionalEmbeddingSine>(*this);
 }
 
-std::vector<Variable> PositionalEmbeddingSine::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> PositionalEmbeddingSine::forward(
+    const std::vector<Tensor>& inputs) {
   assert(inputs.size() == 1);
   auto input = inputs[0];
 
@@ -66,7 +66,7 @@ std::vector<Variable> PositionalEmbeddingSine::forward(
   // Input mask will be [ w x h x 1 x b ]
   // but implementation expects [ w x h x b ] in order to do interleaves easier
   auto nonMask = fl::reshape(
-      input.tensor(), {inputDims[0], inputDims[1], inputDims[3], 1});
+      input, {inputDims[0], inputDims[1], inputDims[3], 1});
 
   auto expandDims = [](const Tensor& in) {
     auto dims = in.shape();
@@ -110,11 +110,11 @@ std::vector<Variable> PositionalEmbeddingSine::forward(
   posY = interleave(posYSin, posYCos);
   auto result = fl::concatenate(0, posY, posX);
   result = fl::transpose(result, {1, 2, 0, 3});
-  return {fl::Variable(result, false)};
+  return {fl::Tensor(result, false)};
 }
 
-std::vector<Variable> PositionalEmbeddingSine::operator()(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> PositionalEmbeddingSine::operator()(
+    const std::vector<Tensor>& input) {
   return forward(input);
 }
 

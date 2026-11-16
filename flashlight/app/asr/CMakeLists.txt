@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 cmake_dependent_option(FL_BUILD_APP_ASR_TOOLS "Build ASR App tools" ON "FL_BUILD_APP_ASR" OFF)
 
 # ----------------------------- Binaries -----------------------------

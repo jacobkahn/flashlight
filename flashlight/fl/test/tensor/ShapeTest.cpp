@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/test/TestInit.h"
 #include "flashlight/fl/tensor/Shape.h"
 
 using namespace ::testing;
@@ -87,8 +88,41 @@ TEST(ShapeTest, string) {
   checkShapeStrEqual(Shape({7, 7, 7, 7, 7, 7, 7}), "(7, 7, 7, 7, 7, 7, 7)");
 }
 
+TEST(ShapeTest, BroadcastShapes) {
+  // Same shape
+  ASSERT_EQ(broadcastShapes({3, 4}, {3, 4}), Shape({3, 4}));
+
+  // One dim is 1
+  ASSERT_EQ(broadcastShapes({3, 1}, {3, 4}), Shape({3, 4}));
+  ASSERT_EQ(broadcastShapes({1, 4}, {3, 4}), Shape({3, 4}));
+  ASSERT_EQ(broadcastShapes({3, 4}, {1, 4}), Shape({3, 4}));
+
+  // Different ranks (right-aligned: shorter shape treated as having leading 1s)
+  ASSERT_EQ(broadcastShapes({4}, {3, 4}), Shape({3, 4}));
+  ASSERT_EQ(broadcastShapes({3, 4}, {4}), Shape({3, 4}));
+  ASSERT_THROW(broadcastShapes({3}, {3, 4}), std::invalid_argument);
+
+  // Multi-dim broadcasting
+  ASSERT_EQ(broadcastShapes({3, 1, 5}, {3, 4, 5}), Shape({3, 4, 5}));
+  ASSERT_EQ(
+      broadcastShapes({3, 1, 4, 1}, {3, 2, 4, 5}), Shape({3, 2, 4, 5}));
+
+  // Both sides broadcast different dims
+  ASSERT_EQ(
+      broadcastShapes({3, 1, 2, 1}, {1, 4, 1, 5}), Shape({3, 4, 2, 5}));
+
+  // Scalar
+  ASSERT_EQ(broadcastShapes({1}, {3, 4}), Shape({3, 4}));
+  ASSERT_EQ(broadcastShapes({}, {}), Shape({}));
+
+  // Incompatible shapes
+  ASSERT_THROW(broadcastShapes({3}, {4}), std::invalid_argument);
+  ASSERT_THROW(broadcastShapes({3, 4}, {3, 5}), std::invalid_argument);
+  ASSERT_THROW(broadcastShapes({2, 3}, {4, 3}), std::invalid_argument);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

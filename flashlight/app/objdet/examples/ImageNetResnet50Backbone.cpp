@@ -77,9 +77,9 @@ std::tuple<double, double, double> evalLoop(
 
     // Compute and record the loss.
     auto loss = categoricalCrossEntropy(output, target);
-    lossMeter.add(loss.tensor().scalar<float>());
-    top5Acc.add(output.tensor(), target.tensor());
-    top1Acc.add(output.tensor(), target.tensor());
+    lossMeter.add(loss.scalarSync<float>());
+    top5Acc.add(output, target);
+    top1Acc.add(output, target);
   }
   model->train();
   fl::pkg::runtime::syncMeter(lossMeter);
@@ -228,21 +228,21 @@ int main(int argc, char** argv) {
     int idx = 0;
     for (auto& example : trainDataset) {
       opt.zeroGrad();
-      // Make a Variable from the input Tensor.
+      // Make a Tensor from the input Tensor.
       auto inputs = noGrad(example[kImagenetInputIdx]);
 
       // Get the activations from the model.
       auto output = model->forward({inputs})[0];
 
-      // Make a Variable from the target Tensor.
+      // Make a Tensor from the target Tensor.
       auto target = noGrad(example[kImagenetTargetIdx]);
 
       // Compute and record the loss.
       auto loss = categoricalCrossEntropy(output, target);
 
-      trainLossMeter.add(loss.tensor());
-      top5Acc.add(output.tensor(), target.tensor());
-      top1Acc.add(output.tensor(), target.tensor());
+      trainLossMeter.add(loss);
+      top5Acc.add(output, target);
+      top1Acc.add(output, target);
 
       // Backprop, update the weights and then zero the gradients.
       loss.backward();

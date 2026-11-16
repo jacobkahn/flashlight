@@ -53,3 +53,7 @@ wheels/
 .vscode
 .vs
 CMakeSettings.json
+
+# Local tool state and ctest scratch
+.claude/
+Testing/

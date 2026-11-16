@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "flashlight/pkg/vision/criterion/Hungarian.h"
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 namespace pkg {
@@ -19,7 +19,7 @@ namespace vision {
 
 class SetCriterion {
  public:
-  using LossDict = std::unordered_map<std::string, Variable>;
+  using LossDict = std::unordered_map<std::string, Tensor>;
 
   SetCriterion(
       const int numClasses,
@@ -28,44 +28,44 @@ class SetCriterion {
       const float eosCoef);
 
   std::vector<Tensor> match(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses);
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses);
 
   LossDict lossLabels(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses,
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses,
       const std::vector<std::pair<Tensor, Tensor>>& indices,
       const int numBoxes);
 
   LossDict lossCardinality(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses);
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses);
 
   LossDict lossBoxes(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses,
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses,
       const std::vector<std::pair<Tensor, Tensor>>& indices,
       const int numBoxes);
 
   LossDict lossMasks(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses);
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses);
 
   LossDict forward(
-      const Variable& predBoxes,
-      const Variable& predLogits,
-      const std::vector<Variable>& targetBoxes,
-      const std::vector<Variable>& targetClasses);
+      const Tensor& predBoxes,
+      const Tensor& predLogits,
+      const std::vector<Tensor>& targetBoxes,
+      const std::vector<Tensor>& targetClasses);
 
   std::unordered_map<std::string, float> getWeightDict();
 

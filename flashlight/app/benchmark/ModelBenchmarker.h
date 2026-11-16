@@ -15,7 +15,7 @@ namespace fl {
 namespace app {
 namespace benchmark {
 
-using Criterion = std::function<fl::Variable(const std::vector<fl::Variable>&)>;
+using Criterion = std::function<fl::Tensor(const std::vector<fl::Tensor>&)>;
 
 class ModelBenchmarker {
  public:
@@ -24,7 +24,7 @@ class ModelBenchmarker {
       const Criterion& criterion,
       const int worldSize = 1);
 
-  void runBenchmark(const std::vector<fl::Variable>& input);
+  void runBenchmark(const std::vector<fl::Tensor>& input);
 
   // Return time splits in seconds
   double getBatchTime() const;

@@ -28,7 +28,8 @@ constexpr int kX64DeviceId = 0;
 class FL_API DeviceManager {
   using DeviceTypeInfo = std::unordered_map<int, const std::unique_ptr<Device>>;
 
-  std::unordered_map<DeviceType, DeviceTypeInfo> deviceTypeToInfo_;
+  mutable std::unordered_map<DeviceType, DeviceTypeInfo> deviceTypeToInfo_;
+  mutable bool cudaInitialized_{false};
 
   // Help enforce singleton
   DeviceManager();
@@ -41,6 +42,9 @@ class FL_API DeviceManager {
   void enforceDeviceTypeAvailable(
       std::string_view errorPrefix,
       const DeviceType type) const;
+
+  // Lazily initialize CUDA devices on first access
+  void ensureCudaInit() const;
 
  public:
   /**

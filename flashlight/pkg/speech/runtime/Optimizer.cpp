@@ -22,7 +22,7 @@ std::shared_ptr<fl::FirstOrderOptimizer> initOptimizer(
         "[InitOptimizer]: No network for initializing the optimizer");
   }
 
-  std::vector<fl::Variable> params;
+  std::vector<fl::Tensor> params;
   for (const auto& n : nets) {
     auto p = n->params();
     params.insert(params.end(), p.begin(), p.end());

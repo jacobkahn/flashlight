@@ -6,6 +6,8 @@
  */
 
 #include "flashlight/fl/nn/modules/Loss.h"
+
+#include <format>
 #include <stdexcept>
 #include <vector>
 
@@ -14,19 +16,18 @@
 
 namespace fl {
 
-Variable MeanSquaredError::forward(
-    const Variable& inputs,
-    const Variable& targets) {
+Tensor MeanSquaredError::forward(
+    const Tensor& inputs,
+    const Tensor& targets) {
   if (inputs.shape() != targets.shape()) {
-    throw std::invalid_argument(
+    throw std::invalid_argument(std::format(
         "MeanSquaredError::forward - inputs and targets are of different"
-        " sizes: {inputs: " +
-        inputs.shape().toString() + ", targets: " + targets.shape().toString() +
-        "}");
+        " sizes: {{inputs: {}, targets: {}}}",
+        inputs.shape().toString(), targets.shape().toString()));
   }
 
   auto df = inputs - targets;
-  auto res = mean(flat(df * df), {0});
+  auto res = autograd::mean(autograd::flatten(df * df), {0});
   return res;
 }
 
@@ -38,19 +39,18 @@ std::string MeanSquaredError::prettyString() const {
   return "MeanSquaredError";
 }
 
-Variable MeanAbsoluteError::forward(
-    const Variable& inputs,
-    const Variable& targets) {
+Tensor MeanAbsoluteError::forward(
+    const Tensor& inputs,
+    const Tensor& targets) {
   if (inputs.shape() != targets.shape()) {
-    throw std::invalid_argument(
+    throw std::invalid_argument(std::format(
         "MeanAbsoluteError::forward - inputs and targets are of different"
-        " sizes: {inputs: " +
-        inputs.shape().toString() + ", targets: " + targets.shape().toString() +
-        "}");
+        " sizes: {{inputs: {}, targets: {}}}",
+        inputs.shape().toString(), targets.shape().toString()));
   }
 
   auto df = inputs - targets;
-  return mean(flat(fl::abs(df)), {0});
+  return autograd::mean(autograd::flatten(autograd::abs(df)), {0});
 }
 
 std::unique_ptr<Module> MeanAbsoluteError::clone() const {
@@ -61,17 +61,17 @@ std::string MeanAbsoluteError::prettyString() const {
   return "MeanAbsoluteError";
 }
 
-Variable BinaryCrossEntropy::forward(
-    const Variable& inputs,
-    const Variable& targets) {
-  return mean(flat(binaryCrossEntropy(inputs, targets)), {0});
+Tensor BinaryCrossEntropy::forward(
+    const Tensor& inputs,
+    const Tensor& targets) {
+  return autograd::mean(autograd::flatten(autograd::binaryCrossEntropy(inputs, targets)), {0});
 }
 
-Variable BinaryCrossEntropy::forward(
-    const Variable& inputs,
-    const Variable& targets,
-    const Variable& weights) {
-  return mean(flat(weights * binaryCrossEntropy(inputs, targets)), {0});
+Tensor BinaryCrossEntropy::forward(
+    const Tensor& inputs,
+    const Tensor& targets,
+    const Tensor& weights) {
+  return autograd::mean(autograd::flatten(weights * autograd::binaryCrossEntropy(inputs, targets)), {0});
 }
 
 std::unique_ptr<Module> BinaryCrossEntropy::clone() const {
@@ -82,10 +82,10 @@ std::string BinaryCrossEntropy::prettyString() const {
   return "BinaryCrossEntropy";
 }
 
-Variable CategoricalCrossEntropy::forward(
-    const Variable& inputs,
-    const Variable& targets) {
-  return categoricalCrossEntropy(inputs, targets, reduction_, ignoreIndex_);
+Tensor CategoricalCrossEntropy::forward(
+    const Tensor& inputs,
+    const Tensor& targets) {
+  return autograd::categoricalCrossEntropy(inputs, targets, reduction_, ignoreIndex_);
 }
 
 std::unique_ptr<Module> CategoricalCrossEntropy::clone() const {
@@ -107,96 +107,96 @@ AdaptiveSoftMaxLoss::AdaptiveSoftMaxLoss(
   params_ = activation_->params();
 }
 
-Variable AdaptiveSoftMaxLoss::cast(
-    const Variable& input,
+Tensor AdaptiveSoftMaxLoss::cast(
+    const Tensor& input,
     const Shape& outDims,
     const Tensor& indices) {
   if (input.elements() != indices.elements()) {
     throw std::invalid_argument("AdaptiveSoftMaxLoss: input, indices mismatch");
   }
   Tensor output = fl::full(outDims, 0, input.type());
-  output(indices) = input.tensor().flatten();
+  output(indices) = input.flatten();
+
   auto inputDims = input.shape();
 
   auto gradFunc = [indices, inputDims](
-                      std::vector<Variable>& inputs,
-                      const Variable& grad_output) {
-    Tensor gradTensor = grad_output.tensor()(indices);
-    auto grad = Variable(fl::reshape(gradTensor, inputDims), false);
+                      std::vector<Tensor>& inputs,
+                      const Tensor& grad_output) {
+    Tensor gradTensor = grad_output(indices);
+    auto grad = Tensor(fl::reshape(gradTensor, inputDims), false);
     inputs[0].addGrad(grad);
   };
-  return Variable(output, {input.withoutData()}, gradFunc);
+  return Tensor(output, {input.withoutData()}, gradFunc);
 }
 
-Variable AdaptiveSoftMaxLoss::forward(
-    const Variable& inputs,
-    const Variable& targets) {
-  // inputs: N x T x B
-  // targets: T x B
+Tensor AdaptiveSoftMaxLoss::forward(
+    const Tensor& inputs,
+    const Tensor& targets) {
+  // Row-major: inputs: B x T x N, targets: B x T
   if (inputs.ndim() != 3) {
     throw std::invalid_argument(
         "AdaptiveSoftMaxLoss::forward expects input tensor with "
-        "3 dimensions in N x T x B ordering.");
+        "3 dimensions in B x T x N ordering.");
   }
   if (targets.ndim() != 2) {
     throw std::invalid_argument(
         "AdaptiveSoftMaxLoss::forward expects target tensor with "
-        "2 dimensions in T x B ordering.");
+        "2 dimensions in B x T ordering.");
   }
-  if (inputs.dim(1) != targets.dim(0)) {
-    throw std::invalid_argument("AdaptiveSoftMaxLoss: length mismatch");
-  } else if (inputs.dim(2) != targets.dim(1)) {
+  if (inputs.dim(0) != targets.dim(0)) {
     throw std::invalid_argument("AdaptiveSoftMaxLoss: batch size mismatch");
+  } else if (inputs.dim(1) != targets.dim(1)) {
+    throw std::invalid_argument("AdaptiveSoftMaxLoss: length mismatch");
   }
 
-  auto N = inputs.dim(0);
+  auto B = inputs.dim(0);
   auto T = inputs.dim(1);
-  auto B = inputs.dim(2);
+  auto N = inputs.dim(2);
   auto cutoff = activation_->getCutoff();
 
-  auto input = moddims(inputs, {N, T * B});
-  auto target = moddims(targets, {T * B});
+  auto input = autograd::reshape(inputs, {B * T, N});
+  auto target = autograd::reshape(targets, {B * T});
 
-  auto headOutput = matmul(params_[0], input);
-  auto headTarget = Variable(target.tensor(), false) * (target < cutoff[0]);
-  // TODO: check the type of res
-  auto res = Variable(fl::full({T * B}, 0, fl::dtype::f32), true);
+  auto headOutput = autograd::matmul(input, params_[0], MatrixProperty::None, MatrixProperty::Transpose);
+  auto headTarget = Tensor(target, false) * (target < cutoff[0]);
+  auto res = Tensor(fl::full({B * T}, 0, fl::dtype::f32), true);
 
-  // Tail forwawrd
+  // Tail forward
   for (int i = 0; i < cutoff.size() - 1; i++) {
     auto mask = (target >= cutoff[i]) && (target < cutoff[i + 1]);
-    if (!fl::any(mask.tensor()).scalar<char>()) {
+    if (!fl::any(mask).scalarSync<char>()) {
       continue;
     }
 
-    auto indicesArray = fl::nonzero(mask.tensor());
+    auto indicesArray = fl::nonzero(mask);
     headTarget =
         headTarget + (mask * (cutoff[0] + i)).astype(headTarget.type());
     auto tailTarget = target(indicesArray) - cutoff[i];
-    auto selectedInput = embedding(Variable(indicesArray, false), input);
-    auto tailOutput = matmul(params_[1 + i * 2], selectedInput);
-    tailOutput = matmul(params_[2 + i * 2], tailOutput);
-    auto localLoss = categoricalCrossEntropy(
-        logSoftmax(tailOutput, 0), tailTarget, ReduceMode::NONE, ignoreIndex_);
-    res = res + cast(localLoss, res.shape(), indicesArray);
+    auto selectedInput = autograd::embedding(Tensor(indicesArray, false), input);
+    auto tailOutput = autograd::matmul(selectedInput, params_[1 + i * 2], MatrixProperty::None, MatrixProperty::Transpose);
+    tailOutput = autograd::matmul(tailOutput, params_[2 + i * 2], MatrixProperty::None, MatrixProperty::Transpose);
+    auto localLoss = autograd::categoricalCrossEntropy(
+        autograd::logSoftmax(tailOutput, 1), tailTarget, ReduceMode::NONE, ignoreIndex_);
+    auto castResult = cast(localLoss, res.shape(), indicesArray);
+    res = res + castResult;
   }
 
   // Head forward
-  res = res +
-      categoricalCrossEntropy(
-            logSoftmax(headOutput, 0),
+  auto headLoss = autograd::categoricalCrossEntropy(
+            autograd::logSoftmax(headOutput, 1),
             headTarget,
             ReduceMode::NONE,
             ignoreIndex_);
+  res = res + headLoss;
 
   // Reduce
   if (reduction_ == ReduceMode::NONE) {
-    return moddims(res, targets.shape());
+    return autograd::reshape(res, targets.shape());
   }
-  res = sum(res, {0});
+  res = autograd::sum(res, {0});
   if (reduction_ == ReduceMode::MEAN) {
-    auto denominator =
-        fl::countNonzero(target.tensor() != ignoreIndex_).scalar<unsigned>();
+    auto denominator = std::max(
+        fl::countNonzero(target != ignoreIndex_).asScalar<unsigned>(), 1u);
     res = res / denominator;
   }
   return res;
@@ -206,7 +206,7 @@ std::shared_ptr<AdaptiveSoftMax> AdaptiveSoftMaxLoss::getActivation() const {
   return activation_;
 };
 
-void AdaptiveSoftMaxLoss::setParams(const Variable& var, int position) {
+void AdaptiveSoftMaxLoss::setParams(const Tensor& var, int position) {
   Module::setParams(var, position);
   activation_->setParams(var, position);
 }
@@ -216,14 +216,13 @@ std::unique_ptr<Module> AdaptiveSoftMaxLoss::clone() const {
 }
 
 std::string AdaptiveSoftMaxLoss::prettyString() const {
-  std::ostringstream ss;
   auto cutoff = activation_->getCutoff();
-  ss << "Adaptive Softmax (";
-  for (int i = 0; i < cutoff.size() - 1; i++) {
-    ss << cutoff[i] << ", ";
+  std::string cutoffs;
+  for (size_t i = 0; i < cutoff.size(); ++i) {
+    if (i > 0) cutoffs += ", ";
+    cutoffs += std::to_string(cutoff[i]);
   }
-  ss << cutoff[cutoff.size() - 1] << ")";
-  return ss.str();
+  return std::format("Adaptive Softmax ({})", cutoffs);
 }
 
 } // namespace fl

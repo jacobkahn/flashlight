@@ -91,50 +91,50 @@ std::unique_ptr<Module> VisionTransformer::clone() const {
       "Cloning is unimplemented in Module 'VisionTransformer'");
 }
 
-Variable VisionTransformer::gelu(const Variable& input) {
+Tensor VisionTransformer::gelu(const Tensor& input) {
   // https://arxiv.org/pdf/1606.08415.pdf
   auto geluConst = 1 / std::sqrt(2);
-  auto res = 0.5 * input * (1 + erf(input * geluConst));
+  auto res = 0.5 * input * (1 + autograd::erf(input * geluConst));
   return res;
 }
 
-Variable VisionTransformer::mlp(const Variable& input) {
+Tensor VisionTransformer::mlp(const Tensor& input) {
   float pDropout = train_ ? pDropout_ : 0.0;
   auto output = (*w1_)(input);
   output = gelu(output.astype(fl::dtype::f32)).astype(input.type());
-  output = dropout(output, pDropout);
+  output = autograd::dropout(output, pDropout);
   output = (*w2_)(output);
-  output = dropout(output, pDropout);
+  output = autograd::dropout(output, pDropout);
 
   return output;
 }
 
-Variable VisionTransformer::selfAttention(const Variable& x) {
+Tensor VisionTransformer::selfAttention(const Tensor& x) {
   // x - C x T x B
   double pDrop = train_ ? pDropout_ : 0.0;
 
-  auto q = transpose((*wq_)(x), {1, 0, 2});
-  auto k = transpose((*wk_)(x), {1, 0, 2});
-  auto v = transpose((*wv_)(x), {1, 0, 2});
+  auto q = autograd::transpose((*wq_)(x), {1, 0, 2});
+  auto k = autograd::transpose((*wk_)(x), {1, 0, 2});
+  auto v = autograd::transpose((*wv_)(x), {1, 0, 2});
 
-  auto result = multiheadAttention(
+  auto result = autograd::multiheadAttention(
       q,
       k,
       v,
-      fl::Variable(), // posEmb
-      fl::Variable(), // mask
-      fl::Variable(), // padMask
+      fl::Tensor(), // posEmb
+      fl::Tensor(), // mask
+      fl::Tensor(), // padMask
       nHeads_,
       pDrop,
       0 // offset
   );
-  result = (*wf_)(transpose(result, {1, 0, 2}));
-  result = dropout(result, pDrop);
+  result = (*wf_)(autograd::transpose(result, {1, 0, 2}));
+  result = autograd::dropout(result, pDrop);
 
   return result;
 }
 
-Variable VisionTransformer::dropPath(const Variable& x) {
+Tensor VisionTransformer::dropPath(const Tensor& x) {
   if (!train_) {
     return x;
   }
@@ -145,15 +145,15 @@ Variable VisionTransformer::dropPath(const Variable& x) {
   int B = x.dim(2);
   auto keepMask = (fl::rand({1, 1, B}) > pLayerdrop_).astype(x.type());
   auto keepRatio =
-      fl::mean(keepMask, {2}).astype(fl::dtype::f32).scalar<float>();
+      fl::mean(keepMask, {2}).astype(fl::dtype::f32).scalarSync<float>();
   // Note: this `keepRatio` is computed for real here, while in the PT
   // implementatino above, `keepRatio` = 1 - pLayerdrop_.
   keepMask = keepMask / keepRatio;
-  return x * Variable(fl::tile(keepMask, {C, T}).astype(x.type()), false);
+  return x * Tensor(fl::tile(keepMask, {C, T}).astype(x.type()), false);
 }
 
-std::vector<Variable> VisionTransformer::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> VisionTransformer::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() != 1) {
     throw std::runtime_error("VisionTransformer forward, !1 input Variables");
   }

@@ -23,8 +23,8 @@ class ConnectionistTemporalClassificationCriterion : public SequenceCriterion {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   Tensor viterbiPath(const Tensor& input, const Tensor& inputSize = Tensor())
       override;
@@ -42,7 +42,7 @@ class ConnectionistTemporalClassificationCriterion : public SequenceCriterion {
 
   FL_SAVE_LOAD_WITH_BASE(SequenceCriterion, scaleMode_)
 
-  void validate(const fl::Variable& input, const fl::Variable& target);
+  void validate(const fl::Tensor& input, const fl::Tensor& target);
 };
 
 typedef ConnectionistTemporalClassificationCriterion CTCLoss;

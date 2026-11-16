@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # stb_image.h
 find_path(stb_INCLUDE_DIRS
   NAMES stb_image.h

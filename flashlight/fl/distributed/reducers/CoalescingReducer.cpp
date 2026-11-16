@@ -21,7 +21,7 @@ CoalescingReducer::~CoalescingReducer() {
   finalize();
 }
 
-void CoalescingReducer::add(Variable& var) {
+void CoalescingReducer::add(Tensor& var) {
   // if this tensor would push the cache oversize, flush
   if (currCacheSize_ + var.bytes() > cacheThresholdBytes_) {
     flush();
@@ -33,11 +33,11 @@ void CoalescingReducer::add(Variable& var) {
     allReduce(var, scale_, async_);
   } else {
     // if async, evaluating the JIT on the value upfront is more efficient than
-    // evaluating the JIT for each Variable in the cache after we flush it,
+    // evaluating the JIT for each Tensor in the cache after we flush it,
     // since it more effectively facilitates overlapping compuation between the
     // AF and distributed compute streams.
     if (async_) {
-      var.eval();
+      fl::eval(var);
     }
     // otherwise, add to cache
     cache_.push_back(var);

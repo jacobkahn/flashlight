@@ -21,7 +21,8 @@ PositionEmbedding::PositionEmbedding(
     int32_t maxLen,
     double dropout)
     : dropout_(dropout) {
-  auto embeddings = uniform(layerDim, maxLen, -0.1, 0.1, fl::dtype::f32, true);
+  // Row-major: embedding is {maxLen, layerDim}
+  auto embeddings = uniform(maxLen, layerDim, -0.1, 0.1, fl::dtype::f32, true);
   params_ = {embeddings};
 }
 
@@ -38,26 +39,28 @@ PositionEmbedding& PositionEmbedding::operator=(
   return *this;
 }
 
-std::vector<Variable> PositionEmbedding::forward(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> PositionEmbedding::forward(
+    const std::vector<Tensor>& input) {
   if (input[0].ndim() != 3) {
     throw std::invalid_argument(
         "PositionEmbedding::forward - expect a tensor with "
-        "3 dimensions - C x T x B");
+        "3 dimensions - B x T x C");
   }
 
-  int n = input[0].dim(1);
-  Variable posEmb = tileAs(
-      params_[0].astype(input[0].type())(fl::span, fl::range(0, n)), input[0]);
+  // Row-major: input is {B, T, C}, params_ is {maxLen, layerDim}
+  int n = input[0].dim(1); // T
+  // Slice first n rows: {T, C}. tileAs broadcasts to {B, T, C}
+  Tensor posEmb = autograd::tileAs(
+      params_[0].astype(input[0].type())(fl::range(0, n)), input[0]);
   if (dropout_ > 0.0 && train_) {
-    return {input[0] + dropout(posEmb, dropout_)};
+    return {input[0] + autograd::dropout(posEmb, dropout_)};
   } else {
     return {input[0] + posEmb};
   }
 }
 
-std::vector<Variable> PositionEmbedding::operator()(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> PositionEmbedding::operator()(
+    const std::vector<Tensor>& input) {
   return forward(input);
 }
 

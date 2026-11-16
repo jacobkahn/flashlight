@@ -18,8 +18,8 @@ class MedianWindow : public WindowBase {
   MedianWindow();
   MedianWindow(int wL, int wR);
 
-  Variable computeWindow(
-      const Variable& prevAttn,
+  Tensor computeWindow(
+      const Tensor& prevAttn,
       int step,
       int targetLen,
       int inputSteps,
@@ -27,7 +27,7 @@ class MedianWindow : public WindowBase {
       const Tensor& inputSizes = Tensor(),
       const Tensor& targetSizes = Tensor()) const override;
 
-  Variable computeVectorizedWindow(
+  Tensor computeVectorizedWindow(
       int targetLen,
       int inputSteps,
       int batchSize,

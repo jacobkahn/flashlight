@@ -9,20 +9,50 @@
 
 #include <gtest/gtest.h>
 
+#include "flashlight/fl/common/Logging.h"
+#include "flashlight/fl/tensor/BackendDispatch.h"
 #include "flashlight/fl/tensor/DefaultTensorType.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/tensor/JitTensorBase.h"
 #include "flashlight/fl/tensor/Random.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/backend/jit/JitTensor.h"
-#include "flashlight/fl/tensor/backend/jit/eval/Evaluator.h"
-#include "flashlight/fl/tensor/backend/jit/ir/ExternalUse.h"
-#include "flashlight/fl/tensor/backend/jit/ir/ValueNode.h"
+#include "flashlight/fl/tensor/eval/Evaluator.h"
+#include "flashlight/fl/tensor/ir/CastNode.h"
+#include "flashlight/fl/tensor/ir/ClipNode.h"
+#include "flashlight/fl/tensor/ir/ConcatenateNode.h"
+#include "flashlight/fl/tensor/ir/CumsumNode.h"
+#include "flashlight/fl/tensor/ir/ExternalUse.h"
+#include "flashlight/fl/tensor/ir/FlipNode.h"
+#include "flashlight/fl/tensor/ir/PadNode.h"
+#include "flashlight/fl/tensor/ir/ReshapeNode.h"
+#include "flashlight/fl/tensor/ir/RollNode.h"
+#include "flashlight/fl/tensor/ir/TileNode.h"
+#include "flashlight/fl/tensor/ir/TransposeNode.h"
+#include "flashlight/fl/tensor/ir/TriangularNode.h"
+#include "flashlight/fl/tensor/ir/ValueNode.h"
+#include "flashlight/fl/tensor/ir/WhereNode.h"
 
 using namespace fl;
 
+namespace {
+
+TensorBackendType defaultEvaluatorBackendType() {
+  return DefaultTensorBackend_t::getInstance().backendType();
+}
+
+bool defaultEvaluatorBackendSupportsGeneralTriangularOps() {
+  const auto backendType = defaultEvaluatorBackendType();
+  return backendType == TensorBackendType::CPU ||
+      backendType == TensorBackendType::Cuda;
+}
+
+} // namespace
+
 class JitEvaluatorTest : public ::testing::Test {
  protected:
-  JitEvaluatorTest() : evaluator_(DefaultTensorBackend_t::getInstance()) {}
+  JitEvaluatorTest()
+      : evaluator_(makeBackendDispatch(DefaultTensorBackend_t::getInstance())) {
+  }
   Evaluator evaluator_;
 };
 
@@ -71,6 +101,7 @@ TEST_F(JitEvaluatorTest, evalCustomNode) {
       "addThenMul",
       {c1, c2, c3},
       shape,
+      dtype,
       [](const std::vector<const Tensor*> inputs) {
         return (*inputs[0] + *inputs[1]) * *inputs[2];
       });
@@ -92,14 +123,19 @@ TEST_F(JitEvaluatorTest, evalIndexNodeWithTensorIdx) {
   const auto dtype = dtype::s32;
   const auto value = iota({10, 10}, {1}, dtype);
   const auto tensorIdx = iota({2, 3}, {1}, dtype);
-  const auto jitTensorIdx =
-      toTensor<JitTensor<DefaultTensorType_t>>(CustomNode::create(
-          "createIota",
-          {},
-          tensorIdx.shape(),
-          [tensorIdx](const std::vector<const Tensor*> /* inputs */) {
-            return tensorIdx;
-          }));
+  auto& jitBackend =
+      getOrCreateJitBackend(DefaultTensorBackend_t::getInstance());
+  const auto jitTensorIdx = Tensor(
+      std::make_unique<JitTensorBase>(
+          CustomNode::create(
+              "createIota",
+              {},
+              tensorIdx.shape(),
+              tensorIdx.type(),
+              [tensorIdx](const std::vector<const Tensor*> /* inputs */) {
+                return tensorIdx;
+              }),
+          jitBackend));
   const auto valueNode = ValueNode::create(value.copy());
   const auto indexNode = IndexNode::create(valueNode, {jitTensorIdx});
   evaluator_.eval(indexNode);
@@ -134,16 +170,22 @@ TEST_F(JitEvaluatorTest, evalIndexedUpdateNodeWithoutTensorIdx) {
 
 TEST_F(JitEvaluatorTest, evalIndexedUpdateNodeWithTensorIdx) {
   const auto dtype = dtype::s32;
+  // Tensor index has values 0..5 -- must fit in dim 0 of indexedValue
   const auto tensor = iota(Shape({2, 3}), {1}, dtype);
-  const auto jitTensor =
-      toTensor<JitTensor<DefaultTensorType_t>>(CustomNode::create(
-          "createIota",
-          {},
-          tensor.shape(),
-          [tensor](const std::vector<const Tensor*> /* inputs */) {
-            return tensor;
-          }));
-  const auto indexedValue = iota({4, 5, 6}, {1}, dtype);
+  auto& jitBackend =
+      getOrCreateJitBackend(DefaultTensorBackend_t::getInstance());
+  const auto jitTensor = Tensor(
+      std::make_unique<JitTensorBase>(
+          CustomNode::create(
+              "createIota",
+              {},
+              tensor.shape(),
+              tensor.type(),
+              [tensor](const std::vector<const Tensor*> /* inputs */) {
+                return tensor;
+              }),
+          jitBackend));
+  const auto indexedValue = iota({8, 5, 6}, {1}, dtype);
   const auto updateValue = iota({6, 5, 6}, {1}, dtype);
   const auto indexedValueNode = ValueNode::create(indexedValue.copy());
   const auto updateValueNode = ValueNode::create(updateValue.copy());
@@ -188,8 +230,152 @@ TEST_F(JitEvaluatorTest, evalRetainResults) {
   ASSERT_TRUE(allClose(add->getResult().value(), full(shape, 3, dtype)));
 }
 
+TEST_F(JitEvaluatorTest, evalReshapeNode) {
+  const auto tensor = fl::rand(Shape({3, 4}), dtype::f32);
+  const auto valueNode = ValueNode::create(tensor.copy());
+  Shape newShape({12});
+  const auto reshapeNode = ReshapeNode::create(valueNode, newShape);
+  evaluator_.eval(reshapeNode);
+  ASSERT_EQ(reshapeNode->getResult().value().shape(), newShape);
+  ASSERT_TRUE(allClose(reshapeNode->getResult().value(), tensor.flatten()));
+}
+
+TEST_F(JitEvaluatorTest, evalTransposeNode) {
+  const auto tensor = fl::rand(Shape({3, 4}), dtype::f32);
+  const auto valueNode = ValueNode::create(tensor.copy());
+  Shape axes({1, 0});
+  const auto transposeNode = TransposeNode::create(valueNode, axes);
+  evaluator_.eval(transposeNode);
+  ASSERT_EQ(transposeNode->getResult().value().shape(), Shape({4, 3}));
+  ASSERT_TRUE(
+      allClose(transposeNode->getResult().value(), transpose(tensor, axes)));
+}
+
+TEST_F(JitEvaluatorTest, evalTileNode) {
+  const auto tensor = Tensor::fromVector<float>({2, 2}, {1, 2, 3, 4});
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto tileNode = TileNode::create(valueNode, Shape({2, 3}));
+  evaluator_.eval(tileNode);
+  ASSERT_EQ(tileNode->getResult().value().shape(), Shape({4, 6}));
+  ASSERT_TRUE(allClose(tileNode->getResult().value(), tile(tensor, {2, 3})));
+}
+
+TEST_F(JitEvaluatorTest, evalConcatenateNode) {
+  const auto a = Tensor::fromVector<float>({2, 2}, {1, 2, 3, 4});
+  const auto b = Tensor::fromVector<float>({2, 1}, {5, 6});
+  const auto aNode = ValueNode::create(a.copy());
+  const auto bNode = ValueNode::create(b.copy());
+  const auto concatNode = ConcatenateNode::create({aNode, bNode}, 1);
+  evaluator_.eval(concatNode);
+  ASSERT_EQ(concatNode->getResult().value().shape(), Shape({2, 3}));
+  ASSERT_TRUE(
+      allClose(concatNode->getResult().value(), fl::concatenate({a, b}, 1)));
+}
+
+TEST_F(JitEvaluatorTest, evalPadNode) {
+  const auto tensor = Tensor::fromVector<float>({2, 3}, {1, 2, 3, 4, 5, 6});
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const std::vector<std::pair<int, int>> padWidths{{1, 1}, {2, 0}};
+  const auto padNode = PadNode::create(valueNode, padWidths, PadType::Constant);
+  evaluator_.eval(padNode);
+  ASSERT_EQ(padNode->getResult().value().shape(), Shape({4, 5}));
+  ASSERT_TRUE(allClose(
+      padNode->getResult().value(),
+      fl::pad(tensor, padWidths, PadType::Constant)));
+}
+
+TEST_F(JitEvaluatorTest, evalFlipNode) {
+  const auto tensor = Tensor::fromVector<float>({2, 3}, {1, 2, 3, 4, 5, 6});
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto flipNode = FlipNode::create(valueNode, 1);
+  evaluator_.eval(flipNode);
+  ASSERT_EQ(flipNode->getResult().value().shape(), Shape({2, 3}));
+  ASSERT_TRUE(allClose(flipNode->getResult().value(), fl::flip(tensor, 1)));
+}
+
+TEST_F(JitEvaluatorTest, evalTriangularNode) {
+  if (!defaultEvaluatorBackendSupportsGeneralTriangularOps()) {
+    GTEST_SKIP() << defaultEvaluatorBackendType()
+                 << " backend does not yet support generalized triangular ops";
+  }
+
+  const auto tensor = fl::rand({2, 3, 3}, dtype::f32);
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto lowerNode =
+      TriangularNode::create(valueNode, TriangularMode::Lower, 1);
+  evaluator_.eval(lowerNode);
+  ASSERT_EQ(lowerNode->getResult().value().shape(), Shape({2, 3, 3}));
+  ASSERT_TRUE(allClose(lowerNode->getResult().value(), fl::tril(tensor, 1)));
+
+  const auto upperNode =
+      TriangularNode::create(valueNode, TriangularMode::Upper, -1);
+  evaluator_.eval(upperNode);
+  ASSERT_EQ(upperNode->getResult().value().shape(), Shape({2, 3, 3}));
+  ASSERT_TRUE(allClose(upperNode->getResult().value(), fl::triu(tensor, -1)));
+}
+
+TEST_F(JitEvaluatorTest, evalClipNode) {
+  const auto tensor = Tensor::fromVector<float>({4}, {-1, 1, 5, 7});
+  const auto low = Tensor::fromVector<float>({4}, {0, 0, 0, 0});
+  const auto high = Tensor::fromVector<float>({4}, {4, 4, 4, 4});
+  const auto inputNode = ValueNode::create(tensor.copy());
+  const auto lowNode = ValueNode::create(low.copy());
+  const auto highNode = ValueNode::create(high.copy());
+  const auto clipNode = ClipNode::create(inputNode, lowNode, highNode);
+  evaluator_.eval(clipNode);
+  ASSERT_EQ(clipNode->getResult().value().shape(), Shape({4}));
+  ASSERT_TRUE(
+      allClose(clipNode->getResult().value(), fl::clip(tensor, low, high)));
+}
+
+TEST_F(JitEvaluatorTest, evalCumsumNode) {
+  const auto tensor = Tensor::fromVector<float>({2, 3}, {1, 2, 3, 4, 5, 6});
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto cumsumNode = CumsumNode::create(valueNode, 1);
+  evaluator_.eval(cumsumNode);
+  ASSERT_EQ(cumsumNode->getResult().value().shape(), Shape({2, 3}));
+  ASSERT_TRUE(allClose(cumsumNode->getResult().value(), fl::cumsum(tensor, 1)));
+}
+
+TEST_F(JitEvaluatorTest, evalRollNode) {
+  const auto tensor = Tensor::fromVector<float>({2, 3}, {1, 2, 3, 4, 5, 6});
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto rollNode = RollNode::create(valueNode, -1, 1);
+  evaluator_.eval(rollNode);
+  ASSERT_EQ(rollNode->getResult().value().shape(), Shape({2, 3}));
+  ASSERT_TRUE(allClose(rollNode->getResult().value(), fl::roll(tensor, -1, 1)));
+}
+
+TEST_F(JitEvaluatorTest, evalWhereNode) {
+  const auto condition = Tensor::fromVector<char>({2, 2}, {1, 0, 0, 1});
+  const auto x = Tensor::fromVector<int>({2, 2}, {0, 1, 2, 3});
+  const auto y = Tensor::fromVector<int>({2, 2}, {4, 5, 6, 7});
+  const auto conditionNode = ValueNode::create(condition.copy());
+  const auto xNode = ValueNode::create(x.copy());
+  const auto yNode = ValueNode::create(y.copy());
+  const auto whereNode = WhereNode::create(conditionNode, xNode, yNode);
+  evaluator_.eval(whereNode);
+  ASSERT_EQ(whereNode->getResult().value().shape(), Shape({2, 2}));
+  ASSERT_TRUE(allClose(
+      whereNode->getResult().value(),
+      Tensor::fromVector<int>({2, 2}, {0, 5, 6, 3})));
+}
+
+TEST_F(JitEvaluatorTest, evalCastNode) {
+  const auto tensor = fl::rand(Shape({3, 4}), dtype::f32);
+  const auto valueNode = ValueNode::create(tensor.copy());
+  const auto castNode = CastNode::create(valueNode, dtype::f64);
+  evaluator_.eval(castNode);
+  ASSERT_EQ(castNode->getResult().value().type(), dtype::f64);
+  ASSERT_EQ(castNode->getResult().value().shape(), Shape({3, 4}));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  init();
+  // Use the bare backend (not JIT-wrapped) since this test creates IR nodes
+  // manually and compares evaluator results (bare tensors) with tensors created
+  // via free functions like full()/iota()/rand().
+  setDefaultTensorType<DefaultBaseTensorType_t>();
+  fl::initLogging();
   return RUN_ALL_TESTS();
 }

@@ -52,7 +52,7 @@ class FL_API RawWavSpecAugment : public UnaryModule {
       int maxKernelSize = 20000,
       MaskingStrategy mStrategy = MaskingStrategy::ZERO);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
   std::unique_ptr<Module> clone() const override;
   std::string prettyString() const override;
 

@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # ----------------------------- Dependencies -----------------------------
 find_package(SndFile MODULE)
 if (TARGET SndFile::sndfile)

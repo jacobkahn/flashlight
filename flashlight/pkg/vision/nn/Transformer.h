@@ -16,11 +16,11 @@ namespace fl {
 namespace pkg {
 namespace vision {
 
-fl::Variable transformerMultiheadAttention(
-    const fl::Variable& query,
-    const fl::Variable& key,
-    const fl::Variable& value,
-    const fl::Variable& keyPaddingMask,
+fl::Tensor transformerMultiheadAttention(
+    const fl::Tensor& query,
+    const fl::Tensor& key,
+    const fl::Tensor& value,
+    const fl::Tensor& keyPaddingMask,
     const int32_t nHead,
     const double pDropout);
 
@@ -43,13 +43,13 @@ class MultiheadAttention : public Container {
   // queries [ E, N, L ], where L is target length, N is batch size.
   // keys / values  [ E, N, S ], where S is src length, N is batch size.
   // keyPaddingMask [ S, N ]
-  std::vector<Variable> forward(
-      const Variable& queries,
-      const Variable& keys,
-      const Variable& values,
-      const Variable& keyPaddingMask);
+  std::vector<Tensor> forward(
+      const Tensor& queries,
+      const Tensor& keys,
+      const Tensor& values,
+      const Tensor& keyPaddingMask);
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 
@@ -96,14 +96,14 @@ class TransformerBaseLayer : public Container {
   std::shared_ptr<LayerNorm> norm1_, norm2_;
   float pDropout_;
 
-  Variable mlp(const Variable& in);
+  Tensor mlp(const Tensor& in);
 
-  Variable withPosEmbed(const Variable& input, const Variable& pos);
+  Tensor withPosEmbed(const Tensor& input, const Tensor& pos);
 
-  Variable selfAttention(
-      const Variable& input,
-      const Variable& pos,
-      const Variable& keyPaddingMask = Variable());
+  Tensor selfAttention(
+      const Tensor& input,
+      const Tensor& pos,
+      const Tensor& keyPaddingMask = Tensor());
 
  private:
   void createLayers();
@@ -128,7 +128,7 @@ class TransformerEncoderLayer : public TransformerBaseLayer {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 
@@ -154,15 +154,15 @@ class TransformerDecoderLayer : public Container {
   std::unique_ptr<Module> clone() const override;
 
  protected:
-  Variable mlp(const Variable& in);
+  Tensor mlp(const Tensor& in);
 
-  Variable withPosEmbed(const Variable& input, const Variable& pos);
-  Variable selfAttention(
-      const Variable& input,
-      const Variable& pos,
-      const Variable& keyPaddingMask = Variable());
+  Tensor withPosEmbed(const Tensor& input, const Tensor& pos);
+  Tensor selfAttention(
+      const Tensor& input,
+      const Tensor& pos,
+      const Tensor& keyPaddingMask = Tensor());
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 
@@ -196,7 +196,7 @@ class TransformerDecoder : public Container {
       int32_t layers,
       float pDropout);
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 
@@ -216,7 +216,7 @@ class TransformerEncoder : public Container {
       int32_t layers,
       float pDropout);
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 
@@ -253,10 +253,10 @@ class Transformer : public Container {
    * where C is modelDim, B is Batch size, and W and H are width and height of
    * image
    */
-  std::vector<Variable>
-  forward(Variable src, Variable mask, Variable queryEmbed, Variable posEmbed);
+  std::vector<Tensor>
+  forward(Tensor src, Tensor mask, Tensor queryEmbed, Tensor posEmbed);
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 

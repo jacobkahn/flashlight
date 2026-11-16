@@ -49,14 +49,14 @@ CriterionScaleMode getCriterionScaleMode(
   }
 }
 
-Variable getLinearTarget(const Variable& targetVar, int T) {
+Tensor getLinearTarget(const Tensor& targetVar, int T) {
   int L = targetVar.dim(0);
   int B = targetVar.dim(1);
 
   std::vector<int> target(B * L);
   std::vector<int> newTarget(B * T);
 
-  targetVar.host(target.data());
+  targetVar.hostSync(target.data());
   for (int b = 0; b < B; ++b) {
     const auto pTarget = target.data() + b * L;
     auto pNewTarget = newTarget.data() + b * T;
@@ -71,29 +71,29 @@ Variable getLinearTarget(const Variable& targetVar, int T) {
       }
     }
   }
-  return Variable(Tensor::fromVector({T, B}, newTarget), false);
+  return Tensor(Tensor::fromVector({T, B}, newTarget), false);
 }
 
-fl::Variable applySeq2SeqMask(
-    const fl::Variable& input,
+fl::Tensor applySeq2SeqMask(
+    const fl::Tensor& input,
     const Tensor& targetClasses,
     int padValue) {
   if (input.shape() != targetClasses.shape()) {
     throw std::runtime_error(
         "applySeq2SeqMask: input and mask should have the same dimentions.");
   }
-  Tensor output = input.tensor();
+  Tensor output = input;
   Tensor mask = targetClasses == padValue;
   output(mask) = 0.;
 
   auto gradFunc = [mask](
-                      std::vector<fl::Variable>& inputs,
-                      const fl::Variable& gradOutput) {
-    Tensor gradArray = gradOutput.tensor();
+                      std::vector<fl::Tensor>& inputs,
+                      const fl::Tensor& gradOutput) {
+    Tensor gradArray = gradOutput;
     gradArray(mask) = 0.;
-    inputs[0].addGrad(fl::Variable(gradArray, false));
+    inputs[0].addGrad(fl::Tensor(gradArray, false));
   };
-  return fl::Variable(output, {input.withoutData()}, gradFunc);
+  return fl::Tensor(output, {input.withoutData()}, gradFunc);
 }
 
 } // namespace fl

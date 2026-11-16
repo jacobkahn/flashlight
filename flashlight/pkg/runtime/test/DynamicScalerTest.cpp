@@ -10,7 +10,7 @@
 #include "flashlight/pkg/runtime/amp/DynamicScaler.h"
 
 #include "flashlight/fl/autograd/Functions.h"
-#include "flashlight/fl/autograd/Utils.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/nn/Init.h"
 #include "flashlight/fl/tensor/Init.h"
 
@@ -27,7 +27,7 @@ TEST(DynamicScalerTest, Scaling) {
   ASSERT_TRUE(allClose(loss * 32, scaledLoss));
 
   scaledLoss.addGrad(scaledLoss);
-  std::vector<fl::Variable> params{scaledLoss};
+  std::vector<fl::Tensor> params{scaledLoss};
   bool unscaleStatus = dynamicScaler.unscale(params);
   ASSERT_TRUE(unscaleStatus);
   ASSERT_TRUE(allClose(loss, scaledLoss.grad()));

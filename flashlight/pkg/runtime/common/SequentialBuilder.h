@@ -35,8 +35,8 @@ std::shared_ptr<fl::Sequential> buildSequentialModule(
  * with a transformer block in it!
  * TODO remove with landing plugin arch instead of arch files
  */
-fl::Variable forwardSequentialModuleWithPadMask(
-    const fl::Variable& input,
+fl::Tensor forwardSequentialModuleWithPadMask(
+    const fl::Tensor& input,
     std::shared_ptr<fl::Module> ntwrk,
     const Tensor& inputSizes);
 

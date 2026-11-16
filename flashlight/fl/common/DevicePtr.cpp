@@ -5,11 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include <stdexcept>
 #include <utility>
 
 #include "flashlight/fl/common/DevicePtr.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -18,18 +17,14 @@ DevicePtr::DevicePtr(const Tensor& in)
   if (tensor_->isEmpty()) {
     ptr_ = nullptr;
   } else {
-    if (!tensor_->isContiguous()) {
-      throw std::invalid_argument(
-          "can't get device pointer of non-contiguous Tensor");
-    }
-    ptr_ = tensor_->device<void>();
+    ptr_ = tensor_->deviceSync<void>();
   }
 }
 
 DevicePtr::~DevicePtr() {
-  if (ptr_ != nullptr) {
-    tensor_->unlock();
-  }
+  // No explicit unlock needed. Buffer lifetime is managed by the Tensor
+  // object (held via shallow copy in tensor_). Backend-specific cleanup
+  // (if any) is handled by the tensor adapter's destructor.
 }
 
 DevicePtr::DevicePtr(DevicePtr&& d) noexcept
@@ -38,9 +33,8 @@ DevicePtr::DevicePtr(DevicePtr&& d) noexcept
 }
 
 DevicePtr& DevicePtr::operator=(DevicePtr&& other) noexcept {
-  if (ptr_ != nullptr) {
-    tensor_->unlock();
-  }
+  // Old tensor_ (if any) is destroyed here; its adapter destructor
+  // handles any backend-specific cleanup.
   tensor_ = std::move(other.tensor_);
   ptr_ = other.ptr_;
   other.ptr_ = nullptr;

@@ -18,16 +18,17 @@
 #include <utility>
 
 #include "flashlight/fl/common/Defines.h"
+#include "flashlight/fl/tensor/Types.h"
 
 namespace fl {
 
 class Tensor;
 
 /**
- * @return if fp16 operations are supported with the current flashlight
- * configuration.
+ * @return whether the given dtype is supported by the current default tensor
+ * backend.
  */
-FL_API bool f16Supported();
+FL_API bool dtypeSupported(fl::dtype type);
 
 // Returns round-up result of integer division.
 // throws invalid_argument exception on zero denominator.

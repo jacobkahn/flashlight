@@ -20,6 +20,7 @@ namespace {
 
 using namespace fl;
 
+
 Tensor span(const Shape& inDims, const int index) {
   Shape dims(std::vector<Dim>(std::max(inDims.ndim(), index + 1), 1));
   if (index > inDims.ndim() - 1) {
@@ -81,7 +82,7 @@ std::vector<Tensor> broadcastCoords(const std::vector<Tensor>& input) {
   auto oDims = calcOutDims(input);
   std::transform(
       input.begin(), input.end(), result.begin(), [&oDims](const Tensor& idx) {
-        return detail::tileAs(idx, oDims);
+        return autograd::detail::tileAs(idx, oDims);
       });
   return result;
 }
@@ -103,34 +104,36 @@ Tensor index(const Tensor& in, const std::vector<Tensor>& idxs) {
   return output;
 }
 
-fl::Variable index(const fl::Variable& in, std::vector<Tensor> idxs) {
+fl::Tensor index(const fl::Tensor& in, std::vector<Tensor> idxs) {
   auto idims = in.shape();
-  auto result = index(in.tensor(), idxs);
+  auto result = index(in, idxs);
   auto gradFunction = [idxs, idims](
-                          std::vector<Variable>& inputs,
-                          const Variable& grad_output) {
+                          std::vector<Tensor>& inputs,
+                          const Tensor& grad_output) {
     if (!inputs[0].isGradAvailable()) {
       auto grad = fl::full(idims, 0., inputs[0].type());
-      inputs[0].addGrad(Variable(grad, false));
+      inputs[0].addGrad(Tensor(grad, false));
       return;
     }
-    auto grad = fl::Variable(fl::full(idims, 0, inputs[0].type()), false);
+    auto grad = fl::Tensor(fl::full(idims, 0, inputs[0].type()), false);
     auto linearIndices = ravelIndices(idxs, idims);
-    grad.tensor()(linearIndices) = grad_output.tensor()(
+    grad.detach()(linearIndices) = grad_output(
         fl::range(static_cast<long long>(linearIndices.elements())));
     // TODO Can parallize this if needed but does not work for duplicate keys
     // for(int i = 0; i < linearIndices.elements(); i++) {
     // Tensor index = linearIndices(i);
-    // grad.tensor()(index) += grad_output.tensor()(i);
+    // grad.detach()(index) += grad_output.detach()(i);
     //}
     inputs[0].addGrad(grad);
   };
-  return fl::Variable(result, {in.withoutData()}, gradFunction);
+  return fl::Tensor(result, {in.withoutData()}, gradFunction);
 }
 
 } // namespace
 
 namespace fl::pkg::vision {
+
+
 
 SetCriterion::SetCriterion(
     const int numClasses,
@@ -143,10 +146,10 @@ SetCriterion::SetCriterion(
       eosCoef_(eosCoef){};
 
 SetCriterion::LossDict SetCriterion::forward(
-    const Variable& predBoxesAux,
-    const Variable& predLogitsAux,
-    const std::vector<Variable>& targetBoxes,
-    const std::vector<Variable>& targetClasses) {
+    const Tensor& predBoxesAux,
+    const Tensor& predLogitsAux,
+    const std::vector<Tensor>& targetBoxes,
+    const std::vector<Tensor>& targetClasses) {
   LossDict losses;
 
   for (int i = 0; i < predBoxesAux.dim(3); i++) {
@@ -160,16 +163,16 @@ SetCriterion::LossDict SetCriterion::forward(
         targetBoxes.begin(),
         targetBoxes.end(),
         targetBoxesArray.begin(),
-        [](const Variable& in) { return in.tensor(); });
+        [](const Tensor& in) { return in; });
     std::transform(
         targetClasses.begin(),
         targetClasses.end(),
         targetClassesArray.begin(),
-        [](const Variable& in) { return in.tensor(); });
+        [](const Tensor& in) { return in; });
 
     auto indices = matcher_.compute(
-        predBoxes.tensor(),
-        predLogits.tensor(),
+        predBoxes,
+        predLogits,
         targetBoxesArray,
         targetClassesArray);
 
@@ -177,23 +180,23 @@ SetCriterion::LossDict SetCriterion::forward(
         targetBoxes.begin(),
         targetBoxes.end(),
         0,
-        [](int curr, const Variable& label) { return curr + label.dim(1); });
+        [](int curr, const Tensor& label) { return curr + label.dim(1); });
 
     Tensor numBoxesArray = fl::fromScalar(numBoxes, fl::dtype::s32);
     if (isDistributedInit()) {
       allReduce(numBoxesArray);
     }
-    numBoxes = numBoxesArray.scalar<int>();
+    numBoxes = numBoxesArray.scalarSync<int>();
     numBoxes = std::max(numBoxes / fl::getWorldSize(), 1);
 
     auto labelLoss = lossLabels(
         predBoxes, predLogits, targetBoxes, targetClasses, indices, numBoxes);
     auto bboxLoss = lossBoxes(
         predBoxes, predLogits, targetBoxes, targetClasses, indices, numBoxes);
-    for (std::pair<std::string, Variable> l : labelLoss) {
+    for (std::pair<std::string, Tensor> l : labelLoss) {
       losses[l.first + "_" + std::to_string(i)] = l.second;
     }
-    for (std::pair<std::string, Variable> l : bboxLoss) {
+    for (std::pair<std::string, Tensor> l : bboxLoss) {
       losses[l.first + "_" + std::to_string(i)] = l.second;
     }
   }
@@ -201,17 +204,17 @@ SetCriterion::LossDict SetCriterion::forward(
 }
 
 SetCriterion::LossDict SetCriterion::lossBoxes(
-    const Variable& predBoxes,
-    const Variable& /*predLogits*/,
-    const std::vector<Variable>& targetBoxes,
-    const std::vector<Variable>& /*targetClasses*/,
+    const Tensor& predBoxes,
+    const Tensor& /*predLogits*/,
+    const std::vector<Tensor>& targetBoxes,
+    const std::vector<Tensor>& /*targetClasses*/,
     const std::vector<std::pair<Tensor, Tensor>>& indices,
     const int numBoxes) {
   auto srcIdx = this->getSrcPermutationIdx(indices);
   if (srcIdx.first.isEmpty()) {
     return {
-        {"lossGiou", fl::Variable(fl::fromScalar(0, predBoxes.type()), false)},
-        {"lossBbox", fl::Variable(fl::fromScalar(0, predBoxes.type()), false)}};
+        {"lossGiou", fl::Tensor(fl::fromScalar(0, predBoxes.type()), false)},
+        {"lossBbox", fl::Tensor(fl::fromScalar(0, predBoxes.type()), false)}};
   }
   auto colIdxs = fl::reshape(srcIdx.second, {1, srcIdx.second.dim(0)});
   auto batchIdxs = fl::reshape(srcIdx.first, {1, srcIdx.first.dim(0)});
@@ -219,7 +222,7 @@ SetCriterion::LossDict SetCriterion::lossBoxes(
   auto srcBoxes = index(predBoxes, {Tensor(), colIdxs, batchIdxs});
 
   int i = 0;
-  std::vector<Variable> permuted;
+  std::vector<Tensor> permuted;
   for (const auto& idx : indices) {
     auto targetIdxs = idx.first;
     auto reordered = targetBoxes[i](fl::span, targetIdxs);
@@ -228,7 +231,7 @@ SetCriterion::LossDict SetCriterion::lossBoxes(
     }
     i += 1;
   }
-  auto tgtBoxes = fl::concatenate(permuted, 1);
+  auto tgtBoxes = autograd::concatenate(permuted, 1);
 
   auto costGiou =
       generalizedBoxIou(cxcywh2xyxy(srcBoxes), cxcywh2xyxy(tgtBoxes));
@@ -238,19 +241,19 @@ SetCriterion::LossDict SetCriterion::lossBoxes(
   auto rng = fl::arange({dims[0]});
   costGiou = 1 - index(costGiou, {rng, rng, Tensor(), Tensor()});
 
-  costGiou = sum(costGiou, {0}) / numBoxes;
+  costGiou = autograd::sum(costGiou, {0}) / numBoxes;
 
   auto lossBbox = l1Loss(srcBoxes, tgtBoxes);
-  lossBbox = sum(lossBbox, {0}) / numBoxes;
+  lossBbox = autograd::sum(lossBbox, {0}) / numBoxes;
 
   return {{"lossGiou", costGiou}, {"lossBbox", lossBbox}};
 }
 
 SetCriterion::LossDict SetCriterion::lossLabels(
-    const Variable& /*predBoxes*/,
-    const Variable& predLogits,
-    const std::vector<Variable>& /*targetBoxes*/,
-    const std::vector<Variable>& targetClasses,
+    const Tensor& /*predBoxes*/,
+    const Tensor& predLogits,
+    const std::vector<Tensor>& /*targetBoxes*/,
+    const std::vector<Tensor>& targetClasses,
     const std::vector<std::pair<Tensor, Tensor>>& indices,
     const int /*numBoxes*/) {
   assert(predLogits.dim(0) == numClasses_ + 1);
@@ -268,19 +271,19 @@ SetCriterion::LossDict SetCriterion::lossLabels(
     auto reordered = targetClasses[i](targetIdxs);
     target_classes_full(srcIdxs, i) =
         fl::reshape(
-            targetClasses[i].tensor()(targetIdxs),
+            targetClasses[i](targetIdxs),
             {static_cast<long long>(srcIdxs.elements()), 1})
             .astype(target_classes_full.type());
     i += 1;
   }
 
-  auto softmaxed = logSoftmax(predLogits, 0);
+  auto softmaxed = autograd::logSoftmax(predLogits, 0);
   auto weight = fl::full({numClasses_ + 1}, 1.0f);
   weight.flat(numClasses_) = eosCoef_;
-  auto weightVar = Variable(weight, false);
-  auto lossCe = weightedCategoricalCrossEntropy(
+  auto weightVar = Tensor(weight, false);
+  auto lossCe = autograd::weightedCategoricalCrossEntropy(
       softmaxed,
-      fl::Variable(target_classes_full.astype(fl::dtype::f32), false),
+      fl::Tensor(target_classes_full.astype(fl::dtype::f32), false),
       weightVar,
       -1);
   return {{"lossCe", lossCe.astype(predLogits.type())}};
@@ -308,8 +311,8 @@ std::pair<Tensor, Tensor> SetCriterion::getTgtPermutationIdx(
 
 std::pair<Tensor, Tensor> SetCriterion::getSrcPermutationIdx(
     const std::vector<std::pair<Tensor, Tensor>>& indices) {
-  std::vector<fl::Variable> srcIdxs;
-  std::vector<fl::Variable> batchIdxs;
+  std::vector<fl::Tensor> srcIdxs;
+  std::vector<fl::Tensor> batchIdxs;
   for (int i = 0; i < indices.size(); i++) {
     auto index = indices[i].second;
     if (!index.isEmpty()) {
@@ -318,12 +321,12 @@ std::pair<Tensor, Tensor> SetCriterion::getSrcPermutationIdx(
       batchIdxs.emplace_back(batchIdx, false);
     }
   }
-  fl::Variable srcIdx, batchIdx;
+  fl::Tensor srcIdx, batchIdx;
   if (!srcIdxs.empty()) {
-    srcIdx = concatenate(srcIdxs, 0);
-    batchIdx = concatenate(batchIdxs, 0);
+    srcIdx = autograd::concatenate(srcIdxs, 0);
+    batchIdx = autograd::concatenate(batchIdxs, 0);
   }
-  return {batchIdx.tensor(), srcIdx.tensor()};
+  return {batchIdx, srcIdx};
 }
 
 } // namespace fl

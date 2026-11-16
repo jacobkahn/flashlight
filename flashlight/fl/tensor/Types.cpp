@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/tensor/Types.h"
 
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -24,6 +26,7 @@ const std::unordered_map<dtype, std::string> kTypeToString = {
     {dtype::u16, "u16"},
     {dtype::u32, "u32"},
     {dtype::u64, "u64"},
+    {dtype::bf16, "bf16"},
 };
 
 const std::unordered_map<std::string, dtype> kStringToType = {
@@ -38,6 +41,7 @@ const std::unordered_map<std::string, dtype> kStringToType = {
     {"u16", dtype::u16},
     {"u32", dtype::u32},
     {"u64", dtype::u64},
+    {"bf16", dtype::bf16},
 };
 
 size_t getTypeSize(dtype type) {
@@ -64,6 +68,8 @@ size_t getTypeSize(dtype type) {
       return sizeof(unsigned);
     case dtype::u64:
       return sizeof(unsigned long long);
+    case dtype::bf16:
+      return 2;
     default:
       throw std::invalid_argument("getTypeSize - invalid type queried.");
   }
@@ -74,7 +80,7 @@ const std::string& dtypeToString(dtype type) {
 }
 
 fl::dtype stringToDtype(const std::string& string) {
-  if (kStringToType.find(string) != kStringToType.end()) {
+  if (kStringToType.contains(string)) {
     return kStringToType.at(string);
   }
   throw std::invalid_argument("stringToDtype: Invalid input type: " + string);
@@ -83,6 +89,91 @@ fl::dtype stringToDtype(const std::string& string) {
 std::ostream& operator<<(std::ostream& ostr, const dtype& s) {
   ostr << dtypeToString(s);
   return ostr;
+}
+
+bool isFloatingPoint(dtype type) {
+  return type == dtype::f16 || type == dtype::bf16 || type == dtype::f32 ||
+      type == dtype::f64;
+}
+
+namespace {
+
+// Rank for type promotion: higher rank wins.
+// Float types outrank int types; wider outranks narrower.
+int dtypeRank(dtype t) {
+  switch (t) {
+    case dtype::b8:
+      return 0;
+    case dtype::u8:
+      return 1;
+    case dtype::s16:
+      return 2;
+    case dtype::u16:
+      return 3;
+    case dtype::s32:
+      return 4;
+    case dtype::u32:
+      return 5;
+    case dtype::s64:
+      return 6;
+    case dtype::u64:
+      return 7;
+    case dtype::f16:
+      return 8;
+    case dtype::bf16:
+      return 8;
+    case dtype::f32:
+      return 9;
+    case dtype::f64:
+      return 10;
+  }
+  throw std::invalid_argument("[dtypeRank] Unknown dtype");
+}
+
+} // namespace
+
+dtype promoteDtypes(dtype a, dtype b) {
+  if (a == b) {
+    return a;
+  }
+  // Mixed f16/bf16 promotes to f32 (different 16-bit float encodings)
+  if ((a == dtype::f16 && b == dtype::bf16) ||
+      (a == dtype::bf16 && b == dtype::f16)) {
+    return dtype::f32;
+  }
+  // Float always wins over int
+  bool aFloat = isFloatingPoint(a);
+  bool bFloat = isFloatingPoint(b);
+  if (aFloat && !bFloat) {
+    return a;
+  }
+  if (bFloat && !aFloat) {
+    return b;
+  }
+  // Both float or both int: wider wins
+  return dtypeRank(a) >= dtypeRank(b) ? a : b;
+}
+
+dtype scalarDtype(double value) {
+  // If the value is integral and fits in s32, treat as integer
+  auto intVal = static_cast<int>(value);
+  if (value == static_cast<double>(intVal) &&
+      value >= std::numeric_limits<int>::min() &&
+      value <= std::numeric_limits<int>::max()) {
+    return dtype::s32;
+  }
+  return dtype::f32;
+}
+
+dtype promoteScalarDtype(dtype tensorType, double scalarValue) {
+  auto sd = scalarDtype(scalarValue);
+  // If the tensor is already floating-point, a scalar never widens it
+  // (e.g., f16_tensor / 2.828 stays f16).
+  if (isFloatingPoint(tensorType)) {
+    return tensorType;
+  }
+  // Integer tensor: promote normally (e.g., s32 / 0.5 --> f32)
+  return promoteDtypes(tensorType, sd);
 }
 
 } // namespace fl

@@ -21,7 +21,7 @@ class Resnet50Backbone : public Container {
  public:
   Resnet50Backbone();
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
   std::string prettyString() const override;
 

@@ -89,8 +89,8 @@ DecodeMaster::computeMetrics(const std::shared_ptr<fl::Dataset>& predDataset) {
           "computeMetrics: prediction and target do not match");
     }
     // token predictions and target
-    std::vector<int> predictionV = prediction.toHostVector<int>();
-    std::vector<int> targetV = target.toHostVector<int>();
+    std::vector<int> predictionV = prediction.toHostVectorSync<int>();
+    std::vector<int> targetV = target.toHostVectorSync<int>();
 
     auto predictionS = computeStringPred(predictionV);
     auto targetS = computeStringTarget(targetV);
@@ -98,8 +98,8 @@ DecodeMaster::computeMetrics(const std::shared_ptr<fl::Dataset>& predDataset) {
 
     std::vector<std::string> targetWrdS, predictionWrdS;
     if (isPredictingWrd) {
-      targetWrdS = wrdIdx2Wrd(targetWrd.toHostVector<int>(), wordDict_);
-      predictionWrdS = wrdIdx2Wrd(predictionWrd.toHostVector<int>(), wordDict_);
+      targetWrdS = wrdIdx2Wrd(targetWrd.toHostVectorSync<int>(), wordDict_);
+      predictionWrdS = wrdIdx2Wrd(predictionWrd.toHostVectorSync<int>(), wordDict_);
     } else {
       targetWrdS = tkn2Wrd(targetS, trainOpt_.wordSep);
       predictionWrdS = tkn2Wrd(predictionS, trainOpt_.wordSep);
@@ -144,12 +144,10 @@ std::shared_ptr<fl::Dataset> DecodeMaster::forward(
     if (usePlugin_) {
       output = net_->forward({fl::input(batch[kInputIdx]),
                               fl::noGrad(batch[kDurationIdx])})
-                   .front()
-                   .tensor();
+                   .front();
     } else {
       output = fl::pkg::runtime::forwardSequentialModuleWithPadMask(
-                   fl::input(batch[kInputIdx]), net_, batch[kDurationIdx])
-                   .tensor();
+                   fl::input(batch[kInputIdx]), net_, batch[kDurationIdx]);
     }
     if (output.ndim() > 3) {
       throw std::runtime_error("output should be NxTxB");
@@ -194,7 +192,7 @@ std::shared_ptr<fl::Dataset> DecodeMaster::decode(
       throw std::runtime_error("emission should be NxT");
     }
     std::vector<float> emissionV(emission.elements());
-    emission.astype(fl::dtype::f32).host(emissionV.data());
+    emission.astype(fl::dtype::f32).hostSync(emissionV.data());
     auto results =
         decoder.decode(emissionV.data(), emission.dim(1), emission.dim(0));
 

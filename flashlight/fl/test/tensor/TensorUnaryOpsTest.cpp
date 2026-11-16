@@ -9,11 +9,35 @@
 
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/tensor/JitBackend.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
+#include "flashlight/fl/test/TestInit.h"
+
+#include <limits>
+#include <utility>
+#include <vector>
 
 using namespace ::testing;
 using namespace fl;
+
+namespace {
+
+TensorBackendType concreteDefaultBackendType() {
+  auto& backend = fl::defaultTensorBackend();
+  if (backend.backendType() != TensorBackendType::Jit) {
+    return backend.backendType();
+  }
+  return dynamic_cast<JitBackend&>(backend).wrappedBackend().backendType();
+}
+
+bool defaultBackendSupportsGeneralTriangularOps() {
+  const auto backendType = concreteDefaultBackendType();
+  return backendType == TensorBackendType::CPU ||
+      backendType == TensorBackendType::Cuda;
+}
+
+} // namespace
 
 TEST(TensorUnaryOpsTest, negative) {
   auto a = fl::full({3, 3}, 1);
@@ -38,6 +62,56 @@ TEST(TensorUnaryOpsTest, clip) {
   ASSERT_TRUE(allClose(fl::clip(fl::full({3, 3}, 4.), l, high), high));
   ASSERT_TRUE(allClose(fl::clip(fl::full({3, 3}, 4.), low, h), high));
   ASSERT_TRUE(allClose(fl::clip(fl::full({3, 3}, 4.), l, h), high));
+}
+
+TEST(TensorUnaryOpsTest, clipElementwiseBounds) {
+  // Each element is clipped against its own bounds, not the bounds' first
+  // element.
+  auto x = Tensor::fromVector<float>({4}, {0, 1, 2, 3});
+  auto low = Tensor::fromVector<float>({4}, {1, 0, 3, 0});
+  auto high = Tensor::fromVector<float>({4}, {2, 0.5, 4, 2});
+  auto expected = Tensor::fromVector<float>({4}, {1, 0.5, 3, 2});
+  ASSERT_TRUE(allClose(fl::clip(x, low, high), expected));
+}
+
+TEST(TensorUnaryOpsTest, mathOpsNonF32Types) {
+  // floor/ceil/sin/cos/log1p/erf/isnan must handle every dtype, not just
+  // f32/f64, and keep the input dtype (isnan returns b8).
+  auto i = Tensor::fromVector<int>({3}, {-2, 0, 5});
+  ASSERT_EQ(fl::floor(i).type(), dtype::s32);
+  ASSERT_TRUE(allClose(fl::floor(i), i));
+  ASSERT_TRUE(allClose(fl::ceil(i), i));
+  auto zeros = fl::full({3}, 0, dtype::s32);
+  ASSERT_EQ(fl::cos(zeros).type(), dtype::s32);
+  ASSERT_TRUE(allClose(fl::cos(zeros), fl::full({3}, 1, dtype::s32)));
+  ASSERT_TRUE(allClose(fl::sin(zeros), zeros));
+  ASSERT_FALSE(fl::any(fl::isnan(i)).scalarSync<char>());
+
+  for (auto type : {dtype::f16, dtype::bf16}) {
+    if (!fl::defaultTensorBackend().supportsDataType(type)) {
+      continue;
+    }
+    auto xf = Tensor::fromVector<float>({3}, {0.25, 1.5, -2.5});
+    auto x = xf.astype(type);
+    ASSERT_EQ(fl::floor(x).type(), type);
+    ASSERT_TRUE(allClose(
+        fl::floor(x).astype(dtype::f32),
+        Tensor::fromVector<float>({3}, {0, 1, -3})));
+    ASSERT_TRUE(allClose(
+        fl::ceil(x).astype(dtype::f32),
+        Tensor::fromVector<float>({3}, {1, 2, -2})));
+    for (auto [got, want] :
+         {std::pair{fl::sin(x), fl::sin(xf)},
+          std::pair{fl::cos(x), fl::cos(xf)},
+          std::pair{fl::log1p(fl::abs(x)), fl::log1p(fl::abs(xf))},
+          std::pair{fl::erf(x), fl::erf(xf)}}) {
+      ASSERT_EQ(got.type(), type);
+      ASSERT_TRUE(allClose(got.astype(dtype::f32), want, 2e-2));
+    }
+    auto nan =
+        fl::full({2}, std::numeric_limits<double>::quiet_NaN()).astype(type);
+    ASSERT_TRUE(fl::all(fl::isnan(nan)).scalarSync<char>());
+  }
 }
 
 TEST(TensorUnaryOpsTest, roll) {
@@ -82,64 +156,96 @@ TEST(TensorUnaryOpsTest, sign) {
 }
 
 TEST(TensorUnaryOpsTest, tril) {
-  auto checkSquareTril =
-      [](const Dim dim, const Tensor& res, const Tensor& in) {
-        for (int i = 0; i < dim; ++i) {
-          for (int j = i + 1; j < dim; ++j) {
-            ASSERT_EQ(res(i, j).scalar<float>(), 0.);
-          }
-        }
-        for (int i = 0; i < dim; ++i) {
-          for (int j = 0; j < i; ++j) {
-            ASSERT_TRUE(allClose(res(i, j), in(i, j)));
-          }
-        }
-      };
-  Dim dim = 10;
-  auto t = fl::rand({dim, dim});
-  auto out = fl::tril(t);
-  checkSquareTril(dim, out, t);
+  auto checkTril = [](const Shape& shape,
+                      const Tensor& res,
+                      const Tensor& in,
+                      int diagonal = 0) {
+    ASSERT_GE(shape.ndim(), 2);
+    const auto rows = shape.dim(shape.ndim() - 2);
+    const auto cols = shape.dim(shape.ndim() - 1);
+    const auto batch = shape.elements() / (rows * cols);
+    std::vector<float> resHost(static_cast<size_t>(shape.elements()));
+    std::vector<float> inHost(static_cast<size_t>(shape.elements()));
+    res.hostSync(resHost.data());
+    in.hostSync(inHost.data());
 
-  // TODO: this could be bogus behavior
-  // > 2 dims
-  Dim dim2 = 3;
-  auto t2 = fl::rand({dim2, dim2, dim2});
-  auto out2 = fl::tril(t2);
-  for (unsigned i = 0; i < dim2; ++i) {
-    checkSquareTril(
-        dim2, out2(fl::span, fl::span, i), t2(fl::span, fl::span, i));
+    for (Dim b = 0; b < batch; ++b) {
+      for (Dim i = 0; i < rows; ++i) {
+        for (Dim j = 0; j < cols; ++j) {
+          const auto idx = static_cast<size_t>((b * rows + i) * cols + j);
+          if (j - i > diagonal) {
+            ASSERT_FLOAT_EQ(resHost[idx], 0.);
+          } else {
+            ASSERT_FLOAT_EQ(resHost[idx], inHost[idx]);
+          }
+        }
+      }
+    }
+  };
+  if (!defaultBackendSupportsGeneralTriangularOps()) {
+    GTEST_SKIP() << concreteDefaultBackendType()
+                 << " backend does not yet support generalized tril";
   }
+
+  Dim dim = 10;
+  auto t = fl::rand({dim, dim}, dtype::f32);
+  auto out = fl::tril(t);
+  checkTril(t.shape(), out, t);
+
+  auto diagonalOut = fl::tril(t, 1);
+  checkTril(t.shape(), diagonalOut, t, 1);
+
+  // > 2 dims: triangular submatrices are over the last two dimensions.
+  auto t2 = fl::rand({2, 3, 4}, dtype::f32);
+  auto out2 = fl::tril(t2);
+  checkTril(t2.shape(), out2, t2);
 }
 
 TEST(TensorUnaryOpsTest, triu) {
-  auto checkSquareTriu =
-      [](const Dim dim, const Tensor& res, const Tensor& in) {
-        for (unsigned i = 0; i < dim; ++i) {
-          for (unsigned j = i + 1; j < dim; ++j) {
-            ASSERT_TRUE(allClose(res(i, j), in(i, j)));
+  auto checkTriu = [](const Shape& shape,
+                      const Tensor& res,
+                      const Tensor& in,
+                      int diagonal = 0) {
+    ASSERT_GE(shape.ndim(), 2);
+    const auto rows = shape.dim(shape.ndim() - 2);
+    const auto cols = shape.dim(shape.ndim() - 1);
+    const auto batch = shape.elements() / (rows * cols);
+    std::vector<float> resHost(static_cast<size_t>(shape.elements()));
+    std::vector<float> inHost(static_cast<size_t>(shape.elements()));
+    res.hostSync(resHost.data());
+    in.hostSync(inHost.data());
+
+    for (Dim b = 0; b < batch; ++b) {
+      for (Dim i = 0; i < rows; ++i) {
+        for (Dim j = 0; j < cols; ++j) {
+          const auto idx = static_cast<size_t>((b * rows + i) * cols + j);
+          if (j - i < diagonal) {
+            ASSERT_FLOAT_EQ(resHost[idx], 0.);
+          } else {
+            ASSERT_FLOAT_EQ(resHost[idx], inHost[idx]);
           }
         }
-        for (unsigned i = 0; i < dim; ++i) {
-          for (unsigned j = 0; j < i; ++j) {
-            ASSERT_EQ(res(i, j).scalar<float>(), 0.);
-          }
-        }
-      };
+      }
+    }
+  };
+
+  if (!defaultBackendSupportsGeneralTriangularOps()) {
+    GTEST_SKIP() << concreteDefaultBackendType()
+                 << " backend does not yet support generalized triu";
+  }
 
   int dim = 10;
-  auto t = fl::rand({dim, dim});
+  auto t = fl::rand({dim, dim}, dtype::f32);
   auto out = fl::triu(t);
-  checkSquareTriu(dim, out, t);
+  checkTriu(t.shape(), out, t);
 
-  // TODO: this could be bogus behavior
-  // > 2 dims
-  int dim2 = 3;
-  auto t2 = fl::rand({dim2, dim2, dim2});
+  auto diagonalOut = fl::triu(t, -1);
+  checkTriu(t.shape(), diagonalOut, t, -1);
+
+  // > 2 dims: triangular submatrices are over the last two dimensions.
+  auto t2 = fl::rand({2, 3, 4}, dtype::f32);
   auto out2 = fl::triu(t2);
-  for (int i = 0; i < dim2; ++i) {
-    checkSquareTriu(
-        dim2, out2(fl::span, fl::span, i), t2(fl::span, fl::span, i));
-  }
+  checkTriu(t2.shape(), out2, t2);
 }
 
 TEST(TensorUnaryOpsTest, floor) {
@@ -193,22 +299,22 @@ TEST(TensorUnaryOpsTest, where) {
   // 0 6
   // 5 3
   ASSERT_TRUE(allClose(
-        fl::where(cond, x, y),
-        fl::Tensor::fromVector<int>({2, 2}, {0, 5, 6, 3})));
+      fl::where(cond, x, y),
+      fl::Tensor::fromVector<int>({2, 2}, {0, 5, 6, 3})));
   // 0 1
   // 1 3
   ASSERT_TRUE(allClose(
-        fl::where(cond, x, 1.0),
-        fl::Tensor::fromVector<int>({2, 2}, {0, 1, 1, 3})));
+      fl::where(cond, x, 1.0),
+      fl::Tensor::fromVector<int>({2, 2}, {0, 1, 1, 3})));
   // 2 6
   // 5 2
   ASSERT_TRUE(allClose(
-        fl::where(cond, 2.0, y),
-        fl::Tensor::fromVector<int>({2, 2}, {2, 5, 6, 2})));
+      fl::where(cond, 2.0, y),
+      fl::Tensor::fromVector<int>({2, 2}, {2, 5, 6, 2})));
 }
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  fl::init();
+  flTestInit();
   return RUN_ALL_TESTS();
 }

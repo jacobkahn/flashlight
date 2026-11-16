@@ -14,7 +14,7 @@
 namespace fl {
 
 AdadeltaOptimizer::AdadeltaOptimizer(
-    const std::vector<Variable>& parameters,
+    const std::vector<Tensor>& parameters,
     float learningRate /* = 1.0 */,
     float rho /* = 0.9 */,
     float epsilon /* = 1e-8 */,
@@ -43,8 +43,8 @@ void AdadeltaOptimizer::step() {
       continue;
     }
 
-    const Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    const Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
 
     if (wd_ != 0) {
       // Weight decay term

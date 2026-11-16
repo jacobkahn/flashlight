@@ -34,7 +34,7 @@ class FL_API AsymmetricConv1D : public fl::Conv2D {
       int groups = 1);
 
   explicit AsymmetricConv1D(
-      const fl::Variable& w,
+      const fl::Tensor& w,
       int sx = 1,
       fl::detail::IntOrPadMode px = 0,
       float futurePart = 0.5,
@@ -42,15 +42,15 @@ class FL_API AsymmetricConv1D : public fl::Conv2D {
       int groups = 1);
 
   AsymmetricConv1D(
-      const fl::Variable& w,
-      const fl::Variable& b,
+      const fl::Tensor& w,
+      const fl::Tensor& b,
       int sx = 1,
       fl::detail::IntOrPadMode px = 0,
       float futurePart = 0.5,
       int dx = 1,
       int groups = 1);
 
-  fl::Variable forward(const fl::Variable& input) override;
+  fl::Tensor forward(const fl::Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

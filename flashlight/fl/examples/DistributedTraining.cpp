@@ -96,7 +96,7 @@ int main() {
       // Update parameters
       sgd.step();
 
-      meter.add(l.scalar<float>());
+      meter.add(l.scalarSync<float>());
     }
 
     auto mse = meter.value();
@@ -105,7 +105,7 @@ int main() {
     fl::allReduce(mseArr);
     if (isMaster) {
       std::cout << "Epoch: " << e << " Mean Squared Error: "
-                << mseArr.scalar<double>() / worldSize << std::endl;
+                << mseArr.scalarSync<double>() / worldSize << std::endl;
     }
   }
   if (isMaster) {

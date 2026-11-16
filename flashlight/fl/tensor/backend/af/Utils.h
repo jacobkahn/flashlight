@@ -16,7 +16,7 @@
 
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
 
 #define AF_CHECK(fn)                                                          \
@@ -123,6 +123,22 @@ af::array fromFlData(
  * padding.
  */
 af_border_type flToAfPadType(PadType type);
+
+/**
+ * Convert an FL axis to an AF axis.
+ * FL row-major: dim 0 = outermost, AF col-major: dim 0 = innermost.
+ */
+unsigned flToAfAxis(unsigned flAxis, unsigned ndim);
+
+/**
+ * Convert an AF axis to an FL axis.
+ */
+unsigned afToFlAxis(unsigned afAxis, unsigned ndim);
+
+/**
+ * Convert a vector of FL axes to AF axes.
+ */
+std::vector<int> flToAfAxes(const std::vector<int>& flAxes, int ndim);
 
 } // namespace detail
 } // namespace fl

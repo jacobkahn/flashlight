@@ -69,10 +69,10 @@ std::unique_ptr<Module> AsrTransformer::clone() const {
   return std::make_unique<AsrTransformer>(*this);
 }
 
-std::vector<fl::Variable> AsrTransformer::forward(
-    const std::vector<fl::Variable>& input) {
+std::vector<fl::Tensor> AsrTransformer::forward(
+    const std::vector<fl::Tensor>& input) {
   auto out = input[0];
-  auto xSizes = input[1].tensor();
+  auto xSizes = input[1];
   // expected input dims T x C x 1 x B
   int T = out.dim(0), B = out.dim(3);
   // TODO{fl::Tensor} - check first non-singleton dimension

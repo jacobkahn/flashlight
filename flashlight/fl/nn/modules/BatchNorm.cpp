@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/nn/modules/BatchNorm.h"
 
+#include <format>
+
 #include "flashlight/fl/autograd/Functions.h"
 #include "flashlight/fl/nn/Init.h"
 
@@ -71,7 +73,7 @@ BatchNorm& BatchNorm::operator=(const BatchNorm& other) {
   return *this;
 }
 
-Variable BatchNorm::forward(const Variable& input) {
+Tensor BatchNorm::forward(const Tensor& input) {
   double avgFactor = 0.0;
 
   if (train_ && trackStats_) {
@@ -85,16 +87,21 @@ Variable BatchNorm::forward(const Variable& input) {
 
   auto paramsType =
       (input.type() == fl::dtype::f16) ? fl::dtype::f32 : input.type();
-  return batchnorm(
+  auto [output, newMean, newVar] = autograd::batchnorm(
       input,
-      params_.empty() ? Variable(Tensor(paramsType), false) : params_[0],
-      params_.empty() ? Variable(Tensor(paramsType), false) : params_[1],
+      params_.empty() ? Tensor(Tensor(paramsType), false) : params_[0],
+      params_.empty() ? Tensor(Tensor(paramsType), false) : params_[1],
       runningMean_,
       runningVar_,
       featAxis_,
       train_ || (!trackStats_),
       avgFactor,
       epsilon_);
+  if (train_ && trackStats_) {
+    runningMean_ = newMean;
+    runningVar_ = newVar;
+  }
+  return output;
 }
 
 void BatchNorm::initialize() {
@@ -115,14 +122,11 @@ std::unique_ptr<Module> BatchNorm::clone() const {
 }
 
 std::string BatchNorm::prettyString() const {
-  std::ostringstream ss;
-  ss << "BatchNorm";
-  ss << " ( axis : { ";
+  std::string axes;
   for (auto x : featAxis_) {
-    ss << x << " ";
+    axes += std::format("{} ", x);
   }
-  ss << "}, size : " << featSize_ << " )";
-  return ss.str();
+  return std::format("BatchNorm ( axis : {{ {}}}, size : {} )", axes, featSize_);
 }
 
 } // namespace fl

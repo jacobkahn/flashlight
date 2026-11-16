@@ -35,8 +35,8 @@ class WindowBase {
    * @param targetSizes actual decoder target output sizes (excluding padding);
    * can be empty
    */
-  virtual Variable computeWindow(
-      const Variable& prevAttn,
+  virtual Tensor computeWindow(
+      const Tensor& prevAttn,
       int step,
       int targetLen,
       int inputSteps,
@@ -55,7 +55,7 @@ class WindowBase {
    * @param targetSizes actual decoder target output sizes (excluding padding);
    * can be empty
    */
-  virtual Variable computeVectorizedWindow(
+  virtual Tensor computeVectorizedWindow(
       int targetLen,
       int inputSteps,
       int batchSize,

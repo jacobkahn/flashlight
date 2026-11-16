@@ -16,7 +16,7 @@ using std::vector;
 namespace fl {
 
 AdamOptimizer::AdamOptimizer(
-    const vector<Variable>& parameters,
+    const vector<Tensor>& parameters,
     float learningRate,
     float beta1 /* = 0.9 */,
     float beta2 /* = 0.999 */,
@@ -53,8 +53,8 @@ void AdamOptimizer::step() {
       continue;
     }
 
-    const Tensor& grad = parameters_[i].grad().tensor();
-    Tensor& data = parameters_[i].tensor();
+    const Tensor& grad = parameters_[i].grad();
+    Tensor& data = parameters_[i];
 
     if (wd_ != 0) {
       // Weight decay term

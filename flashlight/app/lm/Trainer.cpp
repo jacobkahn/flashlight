@@ -12,13 +12,12 @@
 
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/Index.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace fl::pkg::runtime;
 using namespace fl::pkg::runtime;
 using namespace fl::pkg::text;
 using namespace fl::lib;
-
 namespace fl::app::lm {
 
 /* ================================ FLAGS ================================ */
@@ -202,9 +201,7 @@ DEFINE_bool(
     fl_amp_use_mixed_precision,
     false,
     "[train] Use mixed precision for training - scale loss and gradients up and down "
-    "by a scale factor that changes over time. If no fl optim mode is "
-    "specified with --fl_optim_mode when passing this flag, automatically "
-    "sets the optim mode to O1.");
+    "by a scale factor that changes over time.");
 DEFINE_double(
     fl_amp_scale_factor,
     65536.,
@@ -218,12 +215,6 @@ DEFINE_double(
     fl_amp_max_scale_factor,
     65536.,
     "[train] Maximum value for the loss scale factor in mixed precision training");
-DEFINE_string(
-    fl_optim_mode,
-    "",
-    "[train] Sets the flashlight optimization mode. "
-    "Optim modes can be O1, O2, or O3.");
-
 /* ================================ Trainer ================================ */
 
 /* ============= Public functions ============= */
@@ -253,10 +244,6 @@ Trainer::Trainer(const std::string& mode) {
   if (FLAGS_fl_amp_use_mixed_precision) {
     FL_LOG_MASTER(INFO)
         << "Mixed precision training enabled. Will perform loss scaling.";
-    auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-        ? fl::OptimLevel::DEFAULT
-        : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-    fl::OptimMode::get().setOptimLevel(flOptimLevel);
   }
 
   FL_LOG_MASTER(INFO) << "network (" << fl::numTotalParams(network_)
@@ -338,11 +325,11 @@ void Trainer::trainStep() {
   bool skipBatch = false;
 
   // 1. Sample
-  fl::Variable input, target;
+  fl::Tensor input, target;
   sampleTimerMeter_.resume();
   std::tie(input, target) = getInputAndTarget(trainDataset_->get(batchIdx_));
   Tensor inputSizes =
-      fl::sum(input.tensor() != kPadIdx_, {0}, /* keepDims = */ true);
+      fl::sum(input != kPadIdx_, {0}, /* keepDims = */ true);
   sampleTimerMeter_.stopAndIncUnit();
 
   while (true) {
@@ -360,12 +347,12 @@ void Trainer::trainStep() {
     bwdTimeMeter_.resume();
     optimizer_->zeroGrad();
     float numTokens =
-        fl::countNonzero(target.tensor() != kPadIdx_).asScalar<float>();
+        fl::countNonzero(target != kPadIdx_).asScalar<float>();
     Tensor numTokensArr = fl::fromScalar(numTokens);
     if (FLAGS_distributed_enable) {
       fl::allReduce(numTokensArr);
     }
-    auto scaledLoss = loss / fl::Variable(numTokensArr, false);
+    auto scaledLoss = loss / fl::Tensor(numTokensArr, false);
     if (dynamicScaler) {
       scaledLoss = dynamicScaler->scale(scaledLoss);
     }
@@ -385,7 +372,7 @@ void Trainer::trainStep() {
       auto weight =
           numTokens / (FLAGS_data_tokens_per_sample * FLAGS_data_batch_size);
       trainLossMeter_.add(
-          fl::mean(loss.tensor()).scalar<float>() / numTokens, weight);
+          fl::mean(loss).scalarSync<float>() / numTokens, weight);
       tokenCountMeter_.add(numTokens);
     }
     break;
@@ -404,19 +391,19 @@ void Trainer::evalStep() {
   criterion_->eval();
 
   for (const auto& sample : *validDataset_) {
-    fl::Variable input, target;
+    fl::Tensor input, target;
     std::tie(input, target) = getInputAndTarget(sample);
-    Tensor inputSizes = fl::sum(input.tensor() != kPadIdx_, {0});
+    Tensor inputSizes = fl::sum(input != kPadIdx_, {0});
     auto output = network_->forward({input, fl::noGrad(inputSizes)}).front();
     auto loss = criterion_->forward({output, target}).front();
     auto numTokens =
-        fl::countNonzero(target.tensor() != kPadIdx_).scalar<unsigned>();
+        fl::countNonzero(target != kPadIdx_).scalarSync<unsigned>();
     if (numTokens > 0) {
       auto weight = numTokens /
           static_cast<double>(
                         FLAGS_data_tokens_per_sample * FLAGS_data_batch_size);
       validLossMeter_.add(
-          fl::mean(loss.tensor()).asScalar<double>() / numTokens, weight);
+          fl::mean(loss).asScalar<double>() / numTokens, weight);
     }
   }
 }
@@ -647,11 +634,11 @@ void Trainer::createOptimizer() {
 }
 
 /* ============= Stateful training helpers ============= */
-std::pair<fl::Variable, fl::Variable> Trainer::getInputAndTarget(
+std::pair<fl::Tensor, fl::Tensor> Trainer::getInputAndTarget(
     const std::vector<Tensor>& sample) const {
   // sample.size() == 1
   // sample[0] has size T x B
-  fl::Variable input, target;
+  fl::Tensor input, target;
   auto T = sample[0].dim(0);
 
   if (FLAGS_train_task == "mask") {
@@ -696,14 +683,14 @@ std::pair<fl::Variable, fl::Variable> Trainer::getInputAndTarget(
     // fix position where it was pad index to be pad
     inputMasked((sample[0] == kPadIdx_).flatten()) = kPadIdx_;
     inputMasked = fl::reshape(inputMasked, sample[0].shape());
-    input = fl::Variable(inputMasked, false);
+    input = fl::Tensor(inputMasked, false);
     auto targetMasked = sample[0].flatten();
     targetMasked(notMasked) = kPadIdx_;
     targetMasked = fl::reshape(targetMasked, sample[0].shape());
-    target = fl::Variable(targetMasked, false);
+    target = fl::Tensor(targetMasked, false);
   } else if (FLAGS_train_task == "autoreg") {
-    input = fl::Variable(sample[0](fl::range(0, T - 1), fl::span), false);
-    target = fl::Variable(sample[0](fl::range(1, T), fl::span), false);
+    input = fl::Tensor(sample[0](fl::range(0, T - 1), fl::span), false);
+    target = fl::Tensor(sample[0](fl::range(1, T), fl::span), false);
   } else {
     throw std::invalid_argument(
         "Not supported train_task: " + FLAGS_train_task);
@@ -745,8 +732,8 @@ void Trainer::reduceGrads() {
       if (!p.isGradAvailable()) {
         p.addGrad(fl::constant(0.0, p.shape(), p.type(), false));
       }
-      auto& grad = p.grad().tensor();
-      p.grad().tensor() = grad;
+      auto& grad = p.grad();
+      p.grad().detach() = grad;
       reducer_->add(p.grad());
     }
     reducer_->finalize();

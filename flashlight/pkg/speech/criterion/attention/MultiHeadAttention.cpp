@@ -38,12 +38,12 @@ std::unique_ptr<Module> MultiHeadContentAttention::clone() const {
       "Cloning is unimplemented in Module 'MultiHeadContentAttention'");
 }
 
-std::pair<Variable, Variable> MultiHeadContentAttention::forwardBase(
-    const Variable& state,
-    const Variable& xEncoded,
-    const Variable& /* unused */,
-    const Variable& logAttnWeight,
-    const Variable& xEncodedSizes) {
+std::pair<Tensor, Tensor> MultiHeadContentAttention::forwardBase(
+    const Tensor& state,
+    const Tensor& xEncoded,
+    const Tensor& /* unused */,
+    const Tensor& logAttnWeight,
+    const Tensor& xEncodedSizes) {
   if (state.ndim() != 3) {
     throw std::invalid_argument(
         "MultiHeadContentAttention::forwardBase: "
@@ -72,17 +72,17 @@ std::pair<Variable, Variable> MultiHeadContentAttention::forwardBase(
       splitInput_ ? xEncodedValue : module(2)->forward({xEncodedValue})[0];
 
   query =
-      moddims(fl::transpose(query, {1, 0, 2}), {U, hiddenDim, B * numHeads_});
-  key = moddims(fl::transpose(key, {1, 0, 2}), {T, hiddenDim, B * numHeads_});
+      autograd::reshape(autograd::transpose(query, {1, 0, 2}), {U, hiddenDim, B * numHeads_});
+  key = autograd::reshape(autograd::transpose(key, {1, 0, 2}), {T, hiddenDim, B * numHeads_});
   value =
-      moddims(fl::transpose(value, {1, 0, 2}), {T, hiddenDim, B * numHeads_});
+      autograd::reshape(autograd::transpose(value, {1, 0, 2}), {T, hiddenDim, B * numHeads_});
 
   // [U, T, B * numHeads_]
   auto innerProd =
-      matmulNT(query, key) / std::sqrt(static_cast<float>(hiddenDim));
+      autograd::matmul(query, key, MatrixProperty::None, MatrixProperty::Transpose) / std::sqrt(static_cast<float>(hiddenDim));
 
   if (!logAttnWeight.isEmpty()) {
-    auto tiledLogAttnWeight = tile(logAttnWeight, {1, 1, numHeads_});
+    auto tiledLogAttnWeight = autograd::tile(logAttnWeight, {1, 1, numHeads_});
     if (tiledLogAttnWeight.shape() != innerProd.shape()) {
       throw std::invalid_argument(
           "MultiHeadContentAttention: logAttnWeight has wong dimentions");
@@ -93,21 +93,21 @@ std::pair<Variable, Variable> MultiHeadContentAttention::forwardBase(
   if (!xEncodedSizes.isEmpty()) {
     innerProd = maskAttention(
         innerProd,
-        moddims(tile(xEncodedSizes, {numHeads_, 1}), {1, B * numHeads_}));
+        autograd::reshape(autograd::tile(xEncodedSizes, {numHeads_, 1}), {1, B * numHeads_}));
   }
 
   // [U, T, B * numHeads_]
-  auto attention = softmax(innerProd, 1);
+  auto attention = autograd::softmax(innerProd, 1);
   // [U, hiddendim, B * numHeads_]
-  auto summaries = matmul(attention, value);
+  auto summaries = autograd::matmul(attention, value);
   // [hiddendim * numHeads_, U, B];
-  summaries = reorder(moddims(summaries, {U, hState, B}), {1, 0, 2});
+  summaries = autograd::transpose(autograd::reshape(summaries, {U, hState, B}), {1, 0, 2});
 
   auto out_summaries = modules().back()->forward({summaries}).front();
 
   // [U * numHeads_, T, B]
-  attention = moddims(
-      reorder(moddims(attention, {U, T, numHeads_, B}), {0, 2, 1, 3}),
+  attention = autograd::reshape(
+      autograd::transpose(autograd::reshape(attention, {U, T, numHeads_, B}), {0, 2, 1, 3}),
       {U * numHeads_, T, B});
   return std::make_pair(attention, out_summaries);
 }

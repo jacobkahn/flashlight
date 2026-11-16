@@ -103,9 +103,9 @@ class FL_API WeightNorm : public Module {
 
   void eval() override;
 
-  void setParams(const Variable& var, int position) override;
+  void setParams(const Tensor& var, int position) override;
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
   std::unique_ptr<Module> clone() const override;
 
@@ -116,7 +116,7 @@ template <class Archive>
 void WeightNorm::save(Archive& ar, const uint32_t /* version */) const {
   // Not saving weight since it can be inferred from from v and g.
   auto wt = module_->param(0);
-  module_->setParams(Variable(), 0);
+  module_->setParams(Tensor(), 0);
   ar(cereal::base_class<Module>(this), module_, dim_, normDim_);
   module_->setParams(wt, 0);
 }

@@ -17,7 +17,7 @@
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/common/Utils.h"
 #include "flashlight/fl/nn/modules/Module.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 

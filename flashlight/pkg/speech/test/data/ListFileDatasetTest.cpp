@@ -71,9 +71,9 @@ TEST(ListFileDatasetTest, LoadData) {
     ASSERT_EQ(audiods.get(i)[3].elements(), 1);
     ASSERT_GE(audiods.get(i)[4].elements(), 15);
     ASSERT_EQ(audiods.get(i)[5].elements(), 1);
-    ASSERT_EQ(audiods.get(i)[5].scalar<float>(), expectedDuration[i]);
+    ASSERT_EQ(audiods.get(i)[5].scalarSync<float>(), expectedDuration[i]);
     ASSERT_EQ(audiods.get(i)[6].elements(), 1);
-    ASSERT_EQ(audiods.get(i)[6].scalar<float>(), expectedTgtLen[i]);
+    ASSERT_EQ(audiods.get(i)[6].scalarSync<float>(), expectedTgtLen[i]);
   }
 }
 

@@ -45,9 +45,9 @@ class FL_API SinusoidalPositionEmbedding : public Module {
    * output[0] = input[0] * inputScale + sinPosEmb, where sinPosEmb is a Tensor
    * of dimensions CxTxBx1 computed based on position and C.
    */
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
 
-  std::vector<Variable> operator()(const std::vector<Variable>& input);
+  std::vector<Tensor> operator()(const std::vector<Tensor>& input);
 
   std::unique_ptr<Module> clone() const override;
 

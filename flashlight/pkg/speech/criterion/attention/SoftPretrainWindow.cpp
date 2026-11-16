@@ -8,14 +8,14 @@
 #include "flashlight/pkg/speech/criterion/attention/SoftPretrainWindow.h"
 
 #include "flashlight/fl/tensor/Index.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/pkg/speech/criterion/attention/Defines.h"
 
 namespace fl::pkg::speech {
 
 SoftPretrainWindow::SoftPretrainWindow(double std) : std_(std) {}
 
-Variable SoftPretrainWindow::compute(
+Tensor SoftPretrainWindow::compute(
     int targetLen,
     int inputSteps,
     int batchSize,
@@ -25,7 +25,7 @@ Variable SoftPretrainWindow::compute(
   int decoderStepsDim = decoderSteps.dim(0);
   auto ts = fl::arange({decoderStepsDim, inputSteps, batchSize}, 1);
   if (inputSizes.isEmpty() && targetSizes.isEmpty()) {
-    return Variable(
+    return Tensor(
         -fl::power(ts - inputSteps / targetLen * decoderSteps, 2) /
             (2 * std_ * std_),
         false);
@@ -46,11 +46,11 @@ Variable SoftPretrainWindow::compute(
   // force all -inf values to be kAttentionMaskValue to avoid nan in softmax
   maskArray(maskArray < kAttentionMaskValue) = kAttentionMaskValue;
   // [decoderStepsDim, inputSteps, batchSize]
-  return Variable(maskArray, false);
+  return Tensor(maskArray, false);
 }
 
-Variable SoftPretrainWindow::computeWindow(
-    const Variable& /* unused */,
+Tensor SoftPretrainWindow::computeWindow(
+    const Tensor& /* unused */,
     int step,
     int targetLen,
     int inputSteps,
@@ -62,7 +62,7 @@ Variable SoftPretrainWindow::computeWindow(
       targetLen, inputSteps, batchSize, inputSizes, targetSizes, decoderSteps);
 }
 
-Variable SoftPretrainWindow::computeVectorizedWindow(
+Tensor SoftPretrainWindow::computeVectorizedWindow(
     int targetLen,
     int inputSteps,
     int batchSize,

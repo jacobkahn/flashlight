@@ -60,10 +60,10 @@ enum class SoundSubFormat {
   G721_32, // 32kbs G721 ADPCM encoding.
   G723_24, // 24kbs G723 ADPCM encoding.
   G723_40, // 40kbs G723 ADPCM encoding.
-  DWVW_12, // 12 bit Delta Width Variable Word encoding.
-  DWVW_16, // 16 bit Delta Width Variable Word encoding.
-  DWVW_24, // 24 bit Delta Width Variable Word encoding.
-  DWVW_N, // N bit Delta Width Variable Word encoding.
+  DWVW_12, // 12 bit Delta Width Tensor Word encoding.
+  DWVW_16, // 16 bit Delta Width Tensor Word encoding.
+  DWVW_24, // 24 bit Delta Width Tensor Word encoding.
+  DWVW_N, // N bit Delta Width Tensor Word encoding.
   DPCM_8, // 8 bit differential PCM (XI only)
   DPCM_16, // 16 bit differential PCM (XI only)
   VORBIS // Xiph Vorbis encoding.

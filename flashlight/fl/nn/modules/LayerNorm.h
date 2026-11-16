@@ -69,7 +69,7 @@ class FL_API LayerNorm : public UnaryModule {
       bool affine = true,
       int axisSize = kLnVariableAxisSize);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

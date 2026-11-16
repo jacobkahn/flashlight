@@ -6,8 +6,8 @@
  */
 
 #include <cmath>
+#include <format>
 #include <numeric>
-#include <sstream>
 #include <stdexcept>
 
 #include "flashlight/fl/common/Logging.h"
@@ -110,12 +110,15 @@ void RawWavSpecAugment::precomputeFilters() {
     // normalize kernel
     kernel = kernel / fl::tile(fl::sum(kernel, {0}), {2 * width + 1});
     // create low pass filter
+    // Row-major: Conv2D weight is {Cout, Cin/groups, kH, kW}
+    // kH = kernelSize operates on dim 2 (H = T).
+    // py = SAME for H dimension, px = 0 for W dimension.
     auto filter = std::make_shared<Conv2D>(
-        Variable(fl::reshape(kernel, {kernel.dim(0), 1, 1, 1}), false),
+        Tensor(fl::reshape(kernel, {1, 1, kernel.dim(0), 1}), false),
         1,
         1,
-        PaddingMode::SAME,
-        0);
+        0,
+        PaddingMode::SAME);
     filter->eval();
     lowPassFilters_.push_back(filter);
   }
@@ -125,8 +128,8 @@ void RawWavSpecAugment::precomputeFilters() {
   }
 }
 
-Variable RawWavSpecAugment::forward(const Variable& input) {
-  if (input.isCalcGrad()) {
+Tensor RawWavSpecAugment::forward(const Tensor& input) {
+  if (input.requiresGrad()) {
     throw std::invalid_argument(
         "input gradient calculation is not supported for RawWavSpecAugment.");
   }
@@ -134,8 +137,7 @@ Variable RawWavSpecAugment::forward(const Variable& input) {
     throw std::invalid_argument("invalid RawWavSpecAugment, filters are empty");
   }
 
-  fl::Variable inputCast = detail::adjustInputType(input, "RawWavSpecAugment");
-  auto output = Variable(inputCast.tensor(), false);
+  auto output = Tensor(input, false);
   if (!train_) {
     return output;
   }
@@ -143,38 +145,40 @@ Variable RawWavSpecAugment::forward(const Variable& input) {
   if (input.ndim() != 3) {
     throw std::invalid_argument(
         "RawWavSpecAugment::forward - invalid input shape: "
-        "input is expected to be T x C x B");
+        "input is expected to be B x C x T");
   }
 
-  // input is expected T x C x B (mostly C=1)
-  const Shape& inShape = inputCast.shape();
-  // Conv2D input must be 4 dims (W x H x C x N) (N = batch size)
-  Shape timeView = {inShape[0], inShape[1] * inShape[2], 1, 1};
+  // Row-major: input is {B, C, T} (mostly C=1)
+  const Shape& inShape = input.shape();
+  // Conv2D input: {N, Cin, H, W}. Reshape to {B*C, 1, T, 1} for lowpass filter.
+  // N=B*C keeps each waveform contiguous, H=T is where kH filter operates.
+  Shape timeView = {inShape[0] * inShape[1], 1, inShape[2], 1};
   for (int i = 0; i < numFreqMask_; ++i) {
     auto low = generateRandomInt(ignoredLowPassFilters_, rawWavNMels_);
     auto high =
         generateRandomInt(low, std::min(rawWavNMels_, low + freqMaskF_) + 1);
     if (high > low) {
-      auto inputForFilter = fl::moddims(output, timeView);
+      auto inputForFilter = autograd::reshape(output, timeView);
       auto midLowWav = lowPassFilters_[high]->forward(inputForFilter);
       auto lowWav = lowPassFilters_[low]->forward(inputForFilter);
-      output = output - fl::moddims(midLowWav - lowWav, inputCast.shape());
+      output = output - autograd::reshape(midLowWav - lowWav, input.shape());
     }
   }
 
   double replaceVal = (maskStrategy_ == MaskingStrategy::GLOBAL_MEAN)
-      ? fl::mean(inputCast.tensor()).asScalar<double>()
+      ? fl::mean(input).asScalar<double>()
       : 0.0;
 
-  auto& opArr = output.tensor();
-  auto numTimeSteps = inputCast.dim(0); // number of time steps
+  auto& opArr = output.detach();
+  auto numTimeSteps = input.dim(2); // T is dim 2 in row-major
   // an upper bound on the time mask
   int T = std::min(timeMaskT_, static_cast<int>(numTimeSteps * timeMaskP_));
   if (T > 0) {
     for (int i = 0; i < numTimeMask_; ++i) {
       auto t = generateRandomInt(0, T);
       auto t0 = generateRandomInt(0, numTimeSteps - t);
-      opArr(fl::range(t0, t0 + t + 1)) = replaceVal;
+      // Mask on dim 2 (T)
+      opArr(fl::span, fl::span, fl::range(t0, t0 + t + 1)) = replaceVal;
     }
   }
   return output;
@@ -190,20 +194,12 @@ std::unique_ptr<Module> RawWavSpecAugment::clone() const {
 }
 
 std::string RawWavSpecAugment::prettyString() const {
-  std::ostringstream ss;
-  ss << "RawWavSpecAugment ( ";
-  ss << "W: " << timeWarpW_ << ", ";
-  ss << "F: " << freqMaskF_ << ", ";
-  ss << "mF: " << numFreqMask_ << ", ";
-  ss << "T: " << timeMaskT_ << ", ";
-  ss << "p: " << timeMaskP_ << ", ";
-  ss << "mT: " << numTimeMask_ << ", ";
-  ss << "rawWavNMels: " << rawWavNMels_ << ", ";
-  ss << "rawWavLowFreqHz: " << rawWavLowFreqHz_ << ", ";
-  ss << "rawWavHighFreqHz: " << rawWavHighFreqHz_ << ", ";
-  ss << "rawWavSampleRate: " << rawWavSampleRate_ << ", ";
-  ss << "maxKernelSize: " << maxKernelSize_ << ", ";
-  ss << " )";
-  return ss.str();
+  return std::format(
+      "RawWavSpecAugment ( W: {}, F: {}, mF: {}, T: {}, p: {}, mT: {}, "
+      "rawWavNMels: {}, rawWavLowFreqHz: {}, rawWavHighFreqHz: {}, "
+      "rawWavSampleRate: {}, maxKernelSize: {},  )",
+      timeWarpW_, freqMaskF_, numFreqMask_, timeMaskT_, timeMaskP_,
+      numTimeMask_, rawWavNMels_, rawWavLowFreqHz_, rawWavHighFreqHz_,
+      rawWavSampleRate_, maxKernelSize_);
 }
 } // namespace fl

@@ -12,9 +12,11 @@
 #include <utility>
 
 #include "flashlight/fl/common/Defines.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
+
+class JitBackend;
 
 /**
  * Convert a Tensor from an adapter or via arguments for an adapter.
@@ -101,69 +103,83 @@ class FL_API TensorAdapterBase {
    *
    * @return the shape of the tensor
    */
-  virtual const Shape& shape() = 0;
+  virtual const Shape& shape() const = 0;
 
   /**
    * Get the data type of tensor.
    *
    * @return the dtype of the tensor
    */
-  virtual dtype type() = 0;
+  virtual dtype type() const = 0;
 
   /**
    * Returns if the tensor is sparse.
    *
    * @return true if the tensor is sparse, else false
    */
-  virtual bool isSparse() = 0;
+  virtual bool isSparse() const = 0;
 
   /**
    * Get a tensor's location, host or some device.
    *
    * @return the tensor's location
    */
-  virtual Location location() = 0;
+  virtual Location location() const = 0;
 
   /**
    * Populate a pointer with a scalar for the first element of the tensor.
+   * May block until data is ready (e.g. stream sync on CPU backends).
+   * For JIT backends, assumes the tensor has been evaluated.
    */
-  virtual void scalar(void* out) = 0;
+  virtual void scalarSync(void* out) = 0;
 
   /**
-   * Returns a pointer to the tensor in device memory
+   * Returns a pointer to the tensor in device memory. For JIT backends this
+   * may return a pre-allocated buffer without triggering evaluation.
    */
   virtual void device(void** out) = 0;
 
   /**
-   * Populates a pointer with a pointer value in memory pointing to a host
-   * buffer containing tensor data.
+   * Returns a pointer to the tensor in device memory (blocking). Triggers
+   * evaluation and synchronization so the data is ready for use. Default
+   * implementation forwards to device().
    */
-  virtual void host(void* out) = 0;
+  virtual void deviceSync(void** out) { device(out); }
 
   /**
-   * Unlocks any device memory associated with the tensor that was acquired with
-   * Tensor::device(), making it eligible to be freed.
+   * Copies tensor data into a host buffer.
+   * May block until data is ready (e.g. stream sync on CPU backends).
+   * For JIT backends, assumes the tensor has been evaluated.
+   */
+  virtual void hostSync(void* out) = 0;
+
+  // TODO: remove unlock()/isLocked() from the TensorAdapter interface.
+  // Buffer lifetime should be managed by the Tensor object itself, not by
+  // explicit lock/unlock calls. Backends that need internal locking should
+  // handle it in their own device()/destructor lifecycle.
+
+  /**
+   * Signals that the caller is done using a device pointer previously
+   * obtained via device(). No-op for most backends.
    */
   virtual void unlock() = 0;
 
   /**
-   * Returns true if the tensor has been memory-locked per a call to
-   * Tensor::device<T>().
-   *
-   * @return true if the tensor is locked and a device pointer is active.
+   * Returns true if a device pointer is currently held via device().
+   * Returns false for most backends.
    */
   virtual bool isLocked() = 0;
 
   /**
    * Returns a bool based on Tensor contiguousness in memory.
    */
-  virtual bool isContiguous() = 0;
+  virtual bool isContiguous() const = 0;
 
   /**
    * Get the dimension-wise strides for this tensor - the number of bytes to
    * step in each direction when traversing.
    */
-  virtual Shape strides() = 0;
+  virtual Shape strides() const = 0;
 
   /**
    * Get the stream which contains(ed) the computation required to realize an
@@ -265,70 +281,73 @@ class FL_API TensorAdapterBase {
 namespace detail {
 
 /*
- * An interface with which to construct a tensor. Templated based on used tensor
- * adapters.
- */
-struct FL_API TensorCreator {
-  virtual ~TensorCreator() = default;
-
-  // General tensor ctor
-  virtual std::unique_ptr<TensorAdapterBase> get(
-      const Shape& shape = {0}, // 0 shape is an empty Tensor
-      fl::dtype type = fl::dtype::f32,
-      const void* ptr = nullptr,
-      MemoryLocation memoryLocation = MemoryLocation::Host) const = 0;
-
-  // Sparse tensor ctor
-  virtual std::unique_ptr<TensorAdapterBase> get(
-      const Dim nRows,
-      const Dim nCols,
-      const Tensor& values,
-      const Tensor& rowIdx,
-      const Tensor& colIdx,
-      StorageType storageType) const = 0;
-};
-
-template <typename T>
-struct TensorCreatorImpl : public TensorCreator {
-  TensorCreatorImpl() = default;
-  ~TensorCreatorImpl() override = default;
-
-  std::unique_ptr<TensorAdapterBase> get(
-      const Shape& shape = {0}, // 0 shape is an empty Tensor
-      fl::dtype type = fl::dtype::f32,
-      const void* ptr = nullptr,
-      MemoryLocation memoryLocation = MemoryLocation::Host) const override {
-    return std::make_unique<T>(shape, type, ptr, memoryLocation);
-  }
-
-  std::unique_ptr<TensorAdapterBase> get(
-      const Dim nRows,
-      const Dim nCols,
-      const Tensor& values,
-      const Tensor& rowIdx,
-      const Tensor& colIdx,
-      StorageType storageType) const override {
-    return std::make_unique<T>(
-        nRows, nCols, values, rowIdx, colIdx, storageType);
-  }
-};
-
-/*
- * A singleton to hold a closure which creates a new tensor of default type. For
- * internal use only - use setDefaultTensorType<T>() to set the type with which
- * to create a default tensor.
+ * Thread-local state for the default tensor type and backend. Each thread gets
+ * its own instance, defaulting to a JIT over the compile-time default backend.
+ * That backend is only initialized on first use, so selecting another default
+ * (setDefaultJitTensorType<T>() / withJitTensorType<T>()) never initializes
+ * it.
+ *
+ * The dense/sparse factories always create bare backend tensors (CPUTensor,
+ * CudaTensor, ArrayFireTensor, etc.). If jitBackend is non-null,
+ * createAdapter() wraps them in a JitTensorBase; otherwise it returns the
+ * bare adapter directly (used by test helpers like setDefaultTensorType<T>()).
  */
 class FL_API DefaultTensorType {
-  // The function to use to create a tensor of default type.
-  std::unique_ptr<TensorCreator> creationFunc_;
+ public:
+  using DenseFactory = std::function<Tensor(
+      const Shape&, dtype, const void*, MemoryLocation)>;
+  using SparseFactory = std::function<Tensor(
+      Dim, Dim, const Tensor&, const Tensor&, const Tensor&, StorageType)>;
+
+  struct State {
+    DenseFactory denseFactory;
+    SparseFactory sparseFactory;
+    // Pointer to a process-lifetime JitBackend (owned by a static map in
+    // getOrCreateJitBackend). nullptr = non-JIT mode (bare adapters only),
+    // unless defaultJitPending is set.
+    JitBackend* jitBackend;
+    // True until the compile-time default JIT backend is first needed.
+    bool defaultJitPending{false};
+  };
+
+ private:
+  DenseFactory denseFactory_;
+  SparseFactory sparseFactory_;
+  JitBackend* jitBackend_{nullptr};
+  bool defaultJitPending_{false};
+
+  // The JitBackend to wrap new tensors with (nullptr in non-JIT mode),
+  // initializing the compile-time default on first use.
+  JitBackend* resolvedJitBackend();
 
  public:
-  static DefaultTensorType& getInstance();
+  static DefaultTensorType& getInstance(); // thread-local
+
   DefaultTensorType();
 
-  std::unique_ptr<TensorCreator> swap(
-      std::unique_ptr<TensorCreator> creator) noexcept;
-  const TensorCreator& getTensorCreator() const;
+  /**
+   * Swap the default tensor factories and JitBackend. Returns the previous
+   * state.
+   */
+  State swap(State newState) noexcept;
+
+  JitBackend& jitBackend();
+
+  std::unique_ptr<TensorAdapterBase> createAdapter(
+      const Shape& shape = {0},
+      dtype type = dtype::f32,
+      const void* ptr = nullptr,
+      MemoryLocation loc = MemoryLocation::Host);
+
+  std::unique_ptr<TensorAdapterBase> createAdapter(
+      Dim nRows,
+      Dim nCols,
+      const Tensor& values,
+      const Tensor& rowIdx,
+      const Tensor& colIdx,
+      StorageType storageType);
+
+  TensorBackend& getBackend();
 
   DefaultTensorType(DefaultTensorType const&) = delete;
   void operator=(DefaultTensorType const&) = delete;
@@ -339,43 +358,41 @@ class FL_API DefaultTensorType {
  */
 template <typename... T>
 std::unique_ptr<TensorAdapterBase> getDefaultAdapter(T&&... t) {
-  return DefaultTensorType::getInstance().getTensorCreator().get(
-      std::forward<T>(t)...);
+  return DefaultTensorType::getInstance().createAdapter(std::forward<T>(t)...);
 }
 
 } // namespace detail
 
 /**
- * Set the default tensor type for which new tensors will be created.
- *
- * This function is parameterized by the tensor type. Usage is as follows:
- * \code
-   fl::setDefaultTensorType<TensorType>()
-   \endcode
- *
- * Where TensorType is derived from TensorAdapterBase.
+ * Set the default tensor type for this thread. The template parameter
+ * WrappedT is the inner/wrapped tensor type (e.g. CPUTensor, CudaTensor,
+ * ArrayFireTensor). JIT wrapping is applied automatically.
+ */
+template <typename WrappedT>
+void setDefaultJitTensorType();
+
+/**
+ * Temporarily set the default tensor type for this thread, restoring the
+ * previous default when the callable returns.
+ */
+template <typename WrappedT, typename Func>
+void withJitTensorType(Func func);
+
+/**
+ * Set the default tensor type directly (non-JIT). Only for special cases
+ * like tests that need to bypass JIT wrapping.
  */
 template <typename T>
-void setDefaultTensorType() {
-  static_assert(
-      std::is_base_of<TensorAdapterBase, T>::value,
-      "setDefaultTensorType: T must be a derived type of TensorAdapterBase");
-  fl::detail::DefaultTensorType::getInstance().swap(
-      std::make_unique<detail::TensorCreatorImpl<T>>());
-}
+void setDefaultTensorType();
 
+/**
+ * Temporarily set the default tensor type directly (non-JIT).
+ */
 template <typename T, typename B>
-void withTensorType(B func) {
-  static_assert(
-      std::is_base_of<TensorAdapterBase, T>::value,
-      "withTensorType: T must be a derived type of TensorAdapterBase");
-
-  // Swap
-  auto oldCreator = fl::detail::DefaultTensorType::getInstance().swap(
-      std::make_unique<detail::TensorCreatorImpl<T>>());
-  func();
-  // Restore
-  fl::detail::DefaultTensorType::getInstance().swap(std::move(oldCreator));
-}
+void withTensorType(B func);
 
 } // namespace fl
+
+// Template implementations are in the header that has DefaultTensorType_t
+// and the concrete backend types available — they are defined after
+// DefaultTensorType.h is included.

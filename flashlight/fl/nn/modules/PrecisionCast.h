@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Serialization.h"
 #include "flashlight/fl/common/Utils.h"
 #include "flashlight/fl/nn/modules/Module.h"
@@ -42,10 +42,10 @@ class FL_API PrecisionCast : public Module {
    *
    * @return A vector that contains the casted variables.
    */
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
-  Variable forward(const Variable& input);
-  Variable operator()(const Variable& input);
+  Tensor forward(const Tensor& input);
+  Tensor operator()(const Tensor& input);
   std::unique_ptr<Module> clone() const override;
   std::string prettyString() const override;
 };

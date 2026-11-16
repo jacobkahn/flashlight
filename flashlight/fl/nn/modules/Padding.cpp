@@ -7,6 +7,8 @@
 
 #include "flashlight/fl/nn/modules/Padding.h"
 
+#include <format>
+
 #include "flashlight/fl/autograd/Functions.h"
 
 namespace fl {
@@ -14,8 +16,8 @@ namespace fl {
 Padding::Padding(std::vector<std::pair<int, int>> padding, double val)
     : m_pad(std::move(padding)), m_val(val) {}
 
-Variable Padding::forward(const Variable& input) {
-  return padding(input, m_pad, m_val);
+Tensor Padding::forward(const Tensor& input) {
+  return autograd::pad(input, m_pad, m_val);
 }
 
 std::unique_ptr<Module> Padding::clone() const {
@@ -23,13 +25,11 @@ std::unique_ptr<Module> Padding::clone() const {
 }
 
 std::string Padding::prettyString() const {
-  std::ostringstream ss;
-  ss << "Padding (" << m_val << ", { ";
-  for (auto p : m_pad) {
-    ss << "(" << p.first << ", " << p.second << "), ";
+  std::string pads;
+  for (const auto& p : m_pad) {
+    pads += std::format("({}, {}), ", p.first, p.second);
   }
-  ss << "})";
-  return ss.str();
+  return std::format("Padding ({}, {{ {}}})", m_val, pads);
 }
 
 } // namespace fl

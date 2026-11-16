@@ -16,25 +16,32 @@ namespace fl {
 
 Module::Module() = default;
 
-Module::Module(const std::vector<Variable>& params)
+Module::Module(const std::vector<Tensor>& params)
     : params_(params.begin(), params.end()) {}
 
-Variable Module::param(int position) const {
+Tensor& Module::param(int position) {
   if (!(position >= 0 && position < params_.size())) {
     throw std::out_of_range("Module param index out of range");
   }
   return params_[position];
 }
 
-void Module::setParams(const Variable& var, int position) {
+const Tensor& Module::param(int position) const {
+  if (!(position >= 0 && position < params_.size())) {
+    throw std::out_of_range("Module param index out of range");
+  }
+  return params_[position];
+}
+
+void Module::setParams(const Tensor& var, int position) {
   if (!(position >= 0 && position < params_.size())) {
     throw std::out_of_range("Module param index out of range");
   }
   params_[position] = var;
 }
 
-std::vector<Variable> Module::copyParams() const {
-  std::vector<Variable> params;
+std::vector<Tensor> Module::copyParams() const {
+  std::vector<Tensor> params;
   params.reserve(params_.size());
   for (const auto& param : params_) {
     params.emplace_back(param.copy());
@@ -45,7 +52,7 @@ std::vector<Variable> Module::copyParams() const {
 void Module::train() {
   train_ = true;
   for (auto& param : params_) {
-    param.setCalcGrad(true);
+    param.setRequiresGrad(true);
   }
 }
 
@@ -58,11 +65,11 @@ void Module::zeroGrad() {
 void Module::eval() {
   train_ = false;
   for (auto& param : params_) {
-    param.setCalcGrad(false);
+    param.setRequiresGrad(false);
   }
 }
 
-std::vector<Variable> Module::params() const {
+std::vector<Tensor> Module::params() const {
   return params_;
 }
 
@@ -70,43 +77,43 @@ int Module::numParamTensors() const {
   return static_cast<int>(params_.size());
 }
 
-std::vector<Variable> Module::operator()(const std::vector<Variable>& input) {
+std::vector<Tensor> Module::operator()(const std::vector<Tensor>& input) {
   return this->forward(input);
 }
 
 UnaryModule::UnaryModule() = default;
 
-UnaryModule::UnaryModule(const std::vector<Variable>& params)
+UnaryModule::UnaryModule(const std::vector<Tensor>& params)
     : Module(params) {}
 
-std::vector<Variable> UnaryModule::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> UnaryModule::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() != 1) {
     throw std::invalid_argument("UnaryModule expects only one input");
   }
   return {forward(inputs[0])};
 }
 
-Variable UnaryModule::operator()(const Variable& input) {
+Tensor UnaryModule::operator()(const Tensor& input) {
   return this->forward(input);
 }
 
 BinaryModule::BinaryModule() = default;
 
-BinaryModule::BinaryModule(const std::vector<Variable>& params)
+BinaryModule::BinaryModule(const std::vector<Tensor>& params)
     : Module(params) {}
 
-std::vector<Variable> BinaryModule::forward(
-    const std::vector<Variable>& inputs) {
+std::vector<Tensor> BinaryModule::forward(
+    const std::vector<Tensor>& inputs) {
   if (inputs.size() != 2) {
     throw std::invalid_argument("BinaryModule expects two inputs");
   }
   return {forward(inputs[0], inputs[1])};
 }
 
-Variable BinaryModule::operator()(
-    const Variable& input1,
-    const Variable& input2) {
+Tensor BinaryModule::operator()(
+    const Tensor& input1,
+    const Tensor& input2) {
   return this->forward(input1, input2);
 }
 

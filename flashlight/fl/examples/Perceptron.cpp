@@ -13,7 +13,7 @@
 #include "flashlight/fl/nn/nn.h"
 #include "flashlight/fl/optim/optim.h"
 #include "flashlight/fl/tensor/Random.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace fl;
 
@@ -68,7 +68,7 @@ int main() {
       // Update parameters
       sgd.step();
 
-      meter.add(l.scalar<float>());
+      meter.add(l.scalarSync<float>());
     }
     std::cout << "Epoch: " << e << " Mean Squared Error: " << meter.value()[0]
               << std::endl;

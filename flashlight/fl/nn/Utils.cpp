@@ -10,7 +10,7 @@
 
 #include "flashlight/fl/nn/Utils.h"
 
-#include "flashlight/fl/autograd/Utils.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Utils.h"
 #include "flashlight/fl/tensor/Index.h"
 
@@ -152,7 +152,17 @@ Tensor join(
     }
     sel[batchDim] = fl::range(i, i + 1);
     if (!inputs[i].isEmpty()) {
-      padSeq(sel) = inputs[i];
+      // If the input has fewer dims than padSeq, reshape it so that the
+      // assignment dimensions match (pad with trailing singleton dims).
+      auto src = inputs[i];
+      if (src.ndim() < padSeq.ndim()) {
+        std::vector<Dim> newShape(padSeq.ndim(), 1);
+        for (int d = 0; d < src.ndim(); ++d) {
+          newShape[d] = src.dim(d);
+        }
+        src = fl::reshape(src, Shape(newShape));
+      }
+      padSeq(sel) = src;
     }
   }
   return padSeq;

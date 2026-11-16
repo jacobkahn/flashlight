@@ -9,8 +9,9 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
+#include "flashlight/fl/common/Serialization.h"
 
 namespace fl {
 
@@ -34,7 +35,7 @@ class FL_API FirstOrderOptimizer {
   FL_SAVE_LOAD(lr_, parameters_)
 
  protected:
-  std::vector<Variable> parameters_;
+  std::vector<Tensor> parameters_;
   double lr_;
 
   FirstOrderOptimizer() = default;
@@ -45,7 +46,7 @@ class FL_API FirstOrderOptimizer {
    * @param learningRate The learning rate.
    */
   FirstOrderOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       double learningRate);
 
   virtual void step() = 0;

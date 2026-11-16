@@ -62,7 +62,7 @@ class FL_API Pool2D : public UnaryModule {
       detail::IntOrPadMode py = 0,
       PoolingMode mode = PoolingMode::MAX);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

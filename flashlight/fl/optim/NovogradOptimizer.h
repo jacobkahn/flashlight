@@ -9,10 +9,10 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -52,7 +52,7 @@ class FL_API NovogradOptimizer : public FirstOrderOptimizer {
    * parameters.
    */
   explicit NovogradOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate,
       float beta1 = 0.95,
       float beta2 = 0.98,

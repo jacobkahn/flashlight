@@ -12,7 +12,7 @@
 
 #include "flashlight/fl/tensor/Init.h"
 #include "flashlight/fl/meter/meters.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 using namespace fl;
 

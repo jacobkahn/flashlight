@@ -9,10 +9,10 @@
 
 #include <vector>
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -39,7 +39,7 @@ class FL_API AdagradOptimizer : public FirstOrderOptimizer {
    * @param epsilon A small value used for numerical stability.
    */
   explicit AdagradOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate = 1.0,
       float epsilon = 1e-8,
       float weightDecay = 0);

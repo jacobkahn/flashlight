@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "flashlight/fl/autograd/Functions.h"
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Index.h"
 #include "flashlight/fl/tensor/Random.h"
 #include "flashlight/pkg/halide/HalideInterface.h"
@@ -103,7 +103,7 @@ TEST(HalideTest, ConvertArrayManual) {
   auto arr = fl::rand({5, 4, 3});
   auto halideBuffer = pkg::halide::detail::toHalideBuffer<float>(arr);
 
-  const float* flHostPtr = arr.host<float>();
+  const float* flHostPtr = arr.hostSync<float>();
 
   halideBuffer.copy_to_host();
   const float* halideHostPtr = halideBuffer.data();

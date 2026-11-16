@@ -19,21 +19,21 @@ DynamicScaler::DynamicScaler(
       maxScaleFactor_(maxFactor),
       updateInterval_(updateInterval) {}
 
-fl::Variable DynamicScaler::scale(const fl::Variable& loss) {
+fl::Tensor DynamicScaler::scale(const fl::Tensor& loss) {
   // Force casting to fp32 to avoid overflow in scaling.
   auto scaledLoss = loss.astype(fl::dtype::f32);
   scaledLoss = scaledLoss * scaleFactor_;
   return scaledLoss;
 }
 
-bool DynamicScaler::unscale(std::vector<fl::Variable>& params) {
+bool DynamicScaler::unscale(std::vector<fl::Tensor>& params) {
   for (auto& p : params) {
     if (!p.isGradAvailable()) {
       // Add a dummy grad for params not used in the backwards pass
-      p.addGrad(Variable(fl::full(p.shape(), 0., p.type()), false));
+      p.addGrad(Tensor(fl::full(p.shape(), 0., p.type()), false));
     }
     p.grad() = p.grad() / scaleFactor_;
-    if (fl::isInvalidArray(p.grad().tensor())) {
+    if (fl::isInvalidArray(p.grad())) {
       if (scaleFactor_ >= fl::kAmpMinimumScaleFactorValue) {
         scaleFactor_ = scaleFactor_ / 2.0f;
         FL_LOG(LogLevel::INFO)

@@ -26,6 +26,7 @@ int getActiveDeviceId(const fl::DeviceType type) {
       throw std::runtime_error("CUDA is unsupported");
     }
   }
+  throw std::invalid_argument("Unknown DeviceType");
 }
 
 } // namespace
@@ -38,14 +39,26 @@ DeviceManager::DeviceManager() {
   x64Info.emplace(kX64DeviceId, std::make_unique<X64Device>());
   deviceTypeToInfo_.emplace(DeviceType::x64, std::move(x64Info));
 
-  // initialize for CUDA
+  // CUDA devices are initialized lazily on first access to avoid blocking
+  // the entire process when the CUDA runtime is unavailable or slow to
+  // initialize (e.g. driver issues, no GPU present). See ensureCudaInit().
+}
+
+void DeviceManager::ensureCudaInit() const {
 #if FL_BACKEND_CUDA
-  deviceTypeToInfo_.insert({DeviceType::CUDA, fl::cuda::createCUDADevices()});
+  if (!cudaInitialized_) {
+    cudaInitialized_ = true;
+    deviceTypeToInfo_.insert(
+        {DeviceType::CUDA, fl::cuda::createCUDADevices()});
+  }
 #endif
 }
 
 void DeviceManager::enforceDeviceTypeAvailable(
   std::string_view errorPrefix, const DeviceType type) const {
+  if (type == DeviceType::CUDA) {
+    ensureCudaInit();
+  }
   if (!isDeviceTypeAvailable(type)) {
     throw std::runtime_error(
       std::string(errorPrefix) + " device type unavailable");
@@ -58,6 +71,9 @@ DeviceManager& DeviceManager::getInstance() {
 }
 
 bool DeviceManager::isDeviceTypeAvailable(const DeviceType type) const {
+  if (type == DeviceType::CUDA) {
+    ensureCudaInit();
+  }
   return deviceTypeToInfo_.contains(type);
 }
 
@@ -97,6 +113,9 @@ Device& DeviceManager::getDevice(const DeviceType type, int id) const {
 }
 
 Device& DeviceManager::getActiveDevice(const DeviceType type) const {
+  if (type == DeviceType::CUDA) {
+    ensureCudaInit();
+  }
   enforceDeviceTypeAvailable("[DeviceManager::getActiveDevice]", type);
   int activeDeviceId = getActiveDeviceId(type);
   return *deviceTypeToInfo_.at(type).at(activeDeviceId);

@@ -26,7 +26,7 @@ ModelBenchmarker::ModelBenchmarker(
   createReducer(worldSize);
 }
 
-void ModelBenchmarker::runBenchmark(const std::vector<fl::Variable>& input) {
+void ModelBenchmarker::runBenchmark(const std::vector<fl::Tensor>& input) {
   model_->train();
 
   // Warmup

@@ -156,25 +156,8 @@ Some operations fall outside of the minimal tensor interface that `fl::Tensor` p
 
 Tensor extensions derive from `TensorExtension<T>` and can define their own APIs for backends to implement operations. Extensions are registered to a given backend using the `FL_REGISTER_TENSOR_EXTENSION(...)` macro, which takes a tensor extension type and a tensor backend type. *Only one implementation of a given tensor extension can be registered to a given backend*.
 
-For example, to register an extension implementation (in this case registering a `CudnnAutogradExtension` to the `ArrayFire` implementation of `TensorBackend`), we first check that the backends are available and selected to be built by the user, before registering the extension:
-```cpp
-#if FL_USE_CUDNN
-  #if FL_USE_ARRAYFIRE && FL_ARRAYFIRE_USE_CUDA
-FL_REGISTER_TENSOR_EXTENSION(
-    CudnnAutogradExtension,
-    TensorBackendType::ArrayFire);
-  #endif // FL_USE_ARRAYFIRE && FL_ARRAYFIRE_USE_CUDA
-#endif // FL_USE_CUDNN
-```
+### Autograd Operations on `TensorBackend`
 
-### A Tensor Extension for Autograd Operations: `AutogradExtension`
+Operations that require backend-specific implementations for autograd (conv2d, pool2d, batchnorm, rnn) are defined as virtual methods directly on `TensorBackend`. Each backend (CudaBackend, OneDnnBackend, ArrayFireBackend) overrides these methods to provide optimized forward and backward implementations (e.g. using cuDNN or oneDNN).
 
-[Flashlight's `AutogradExtension`](flashlight/fl/autograd/tensor/AutogradExtension.h) provides an API for implementing operations that frequently have autograd-aware implementations. These include:
-- Convolution (`conv2d`)
-- Pooling (`pool2d`)
-- Batch normalization (`batchnorm`)
-- Recurrent neural networks (`rnn`)
-
-Each of the above interface functions have one or more corresponding backward functions (e.g. `pool2dBackward`) with which to compute gradients with respect to their forward parameters.
-
-For documentation on the behavior and input parameters of functions on `AutogradExtension`, see the [documentation for `AutogradOps.h`](flashlight/fl/autograd/tensor/AutogradOps.h), which dispatches to the registered `AutogradExtention` implemetations for those operations' input tensors' backends.
+See [`AutogradOps.h`](flashlight/fl/tensor/AutogradOps.h) for the public API that dispatches to these backend methods.

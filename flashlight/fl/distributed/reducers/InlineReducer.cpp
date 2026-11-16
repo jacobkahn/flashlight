@@ -12,11 +12,11 @@ namespace fl {
 
 InlineReducer::InlineReducer(double scale) : scale_(scale) {}
 
-void InlineReducer::add(Variable& var) {
+void InlineReducer::add(Tensor& var) {
   if (getWorldSize() > 1) {
-    allReduce(var.tensor());
+    allReduce(var, /* async = */ false);
   }
-  var.tensor() *= scale_;
+  var *= scale_;
 }
 
 } // namespace fl

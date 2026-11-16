@@ -37,10 +37,10 @@ class LmAdae512SinposL8H8Fc1024Dp03Ldp0Adsm : public fl::Container {
     }
   }
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& input) override {
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& input) override {
     auto out = input[0];
-    auto xSizes = input[1].tensor();
+    auto xSizes = input[1];
     // expected input dims T x B x 1 x 1
     int T = out.dim(0), B = out.dim(1);
     // TODO{fl::Tensor} - first non-signleton dimension check

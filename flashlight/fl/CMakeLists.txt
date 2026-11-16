@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 option(FL_BUILD_CONTRIB "Build and link additional non-stabl contrib components" ON)
 
 # Builds optional non-stable components of the FL API

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <numeric>
 #include <stdexcept>
 
@@ -39,8 +40,8 @@ LayerNorm::LayerNorm(
   initialize();
 }
 
-Variable LayerNorm::forward(const Variable& _input) {
-  Variable input = _input;
+Tensor LayerNorm::forward(const Tensor& _input) {
+  Tensor input = _input;
   // If the input isn't of kLnExpectedNumDims, reshape so it is -- do this by
   // adding singleton dims. This is needed per computing the axis complement
   // TODO: this is pretty ugly -- eventually fix this up if it can be avoided
@@ -49,16 +50,14 @@ Variable LayerNorm::forward(const Variable& _input) {
     for (unsigned i = s.size(); i < kLnExpectedNumDims; ++i) {
       s.push_back(1);
     }
-    input = moddims(_input, Shape(s));
+    input = autograd::reshape(_input, Shape(s));
   } else if (input.ndim() > kLnExpectedNumDims) {
-    throw std::invalid_argument(
-        "LayerNorm::forward - input must be " +
-        std::to_string(kLnExpectedNumDims) + " or fewer dimensions.");
+    throw std::invalid_argument(std::format(
+        "LayerNorm::forward - input must be {} or fewer dimensions.",
+        kLnExpectedNumDims));
   }
 
-  Variable dummyInMean, dummyInVar;
-
-  Variable inputToBn = input;
+  Tensor inputToBn = input;
   std::vector<int> inNormAxes;
   // reorder is only required if axisComplement_ is not continuous
   Shape reorderDims(std::vector<Dim>(input.ndim()));
@@ -81,16 +80,16 @@ Variable LayerNorm::forward(const Variable& _input) {
       inNormAxes.push_back(i);
       reorderDims[i++] = n;
     }
-    inputToBn = reorder(input, reorderDims);
+    inputToBn = autograd::transpose(input, reorderDims);
   }
   auto paramsType =
       (input.type() == fl::dtype::f16) ? fl::dtype::f32 : input.type();
-  auto output = batchnorm(
+  auto [output, _newMean, _newVar] = autograd::batchnorm(
       inputToBn,
-      Variable(Tensor(paramsType), false),
-      Variable(Tensor(paramsType), false),
-      dummyInMean,
-      dummyInVar,
+      Tensor(Tensor(paramsType), false),
+      Tensor(Tensor(paramsType), false),
+      Tensor(),
+      Tensor(),
       inNormAxes,
       true,
       0.0,
@@ -106,12 +105,12 @@ Variable LayerNorm::forward(const Variable& _input) {
     for (size_t i = 0; i < restoreDims.size(); ++i) {
       restoreDimsShape[i] = restoreDims[i].second;
     }
-    output = reorder(output, restoreDimsShape);
+    output = autograd::transpose(output, restoreDimsShape);
   }
 
   if (affine_) {
-    Variable weight = params_[0].astype(output.type());
-    Variable bias = params_[1].astype(output.type());
+    Tensor weight = params_[0].astype(output.type());
+    Tensor bias = params_[1].astype(output.type());
     if (axisSize_ != kLnVariableAxisSize) {
       Shape affineDims = input.shape();
       for (int ax : axisComplement_) {
@@ -121,13 +120,13 @@ Variable LayerNorm::forward(const Variable& _input) {
         throw std::invalid_argument(
             "[LayerNorm] Input size along the norm axis doesn't with axisSize.");
       }
-      weight = moddims(params_[0].astype(output.type()), affineDims);
-      bias = moddims(params_[1].astype(output.type()), affineDims);
+      weight = autograd::reshape(params_[0].astype(output.type()), affineDims);
+      bias = autograd::reshape(params_[1].astype(output.type()), affineDims);
     }
-    output = tileAs(weight, input) * output + tileAs(bias, input);
+    output = autograd::tileAs(weight, input) * output + autograd::tileAs(bias, input);
   }
 
-  return moddims(output, _input.shape());
+  return autograd::reshape(output, _input.shape());
 }
 
 void LayerNorm::initialize() {
@@ -144,17 +143,14 @@ std::unique_ptr<Module> LayerNorm::clone() const {
 }
 
 std::string LayerNorm::prettyString() const {
-  std::ostringstream ss;
-  ss << "LayerNorm";
-  ss << " ( axis : { ";
-  for (int d = 0; d < axisComplement_.size(); ++d) {
+  std::string axes;
+  for (int d = 0; d < static_cast<int>(axisComplement_.size()); ++d) {
     if (std::find(axisComplement_.begin(), axisComplement_.end(), d) ==
         axisComplement_.end()) {
-      ss << d << " ";
+      axes += std::format("{} ", d);
     }
   }
-  ss << "} , size : " << axisSize_ << ")";
-  return ss.str();
+  return std::format("LayerNorm ( axis : {{ {}}} , size : {})", axes, axisSize_);
 }
 
 } // namespace fl

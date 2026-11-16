@@ -90,11 +90,11 @@ class FrozenBatchNorm : public BatchNorm {
 
   std::unique_ptr<Module> clone() const override;
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
-  void setRunningVar(const fl::Variable& x);
+  void setRunningVar(const fl::Tensor& x);
 
-  void setRunningMean(const fl::Variable& x);
+  void setRunningMean(const fl::Tensor& x);
 
   void train() override;
 

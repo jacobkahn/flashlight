@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "flashlight/fl/autograd/Variable.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/common/Serialization.h"
 
@@ -31,10 +31,10 @@ class FL_API Module {
 
  protected:
   /**
-   * Parameters of module, represented as a collection of `Variable`, whose
+   * Parameters of module, represented as a collection of `Tensor`, whose
    * ordering is based on the implementation of the respective module.
    */
-  std::vector<Variable> params_;
+  std::vector<Tensor> params_;
 
   /**
    * A flag specifying whether or not the module is in `train` mode. If
@@ -52,19 +52,19 @@ class FL_API Module {
   /**
    * Constructs a module given its parameters.
    *
-   * @param params a vector of `Variable` which will replace `params_`
+   * @param params a vector of `Tensor` which will replace `params_`
    * This changes all parameters so that gradient calculation will be
    * enabled/disabled for any calls to `forward`.
    */
-  explicit Module(const std::vector<Variable>& params);
+  explicit Module(const std::vector<Tensor>& params);
 
  public:
   /**
    * Gets the parameters of the module.
    *
-   * @return the modules parameters as a vector of `Variable`
+   * @return the modules parameters as a vector of `Tensor`
    */
-  std::vector<Variable> params() const;
+  std::vector<Tensor> params() const;
 
   /**
    * Gets the nunber of parameter tensors of the module.
@@ -89,9 +89,10 @@ class FL_API Module {
    * Returns a module parameter given a particular position.
    *
    * @param position the index of the requested parameter in `params_`
-   * @return a `Variable` tensor for the parameter at the requested position
+   * @return a reference to the `Tensor` tensor at the requested position
    */
-  Variable param(int position) const;
+  Tensor& param(int position);
+  const Tensor& param(int position) const;
 
   /**
    * Sets a parameter at a specified position with a new, given one.
@@ -100,18 +101,18 @@ class FL_API Module {
    * ``params_.size() - 1``), then an error will be thrown. A new parameter
    * will not be created at a specified index if out of bounds.
    *
-   * @param[in] var the new replacement `Variable`
+   * @param[in] var the new replacement `Tensor`
    * @param position The index of the parameter which will be replaced in
    * `params_`
    */
-  virtual void setParams(const Variable& var, int position);
+  virtual void setParams(const Tensor& var, int position);
 
   /**
    * Copies the modules parameters, detaching from the computation graph.
    *
-   * @return a copy of the modules parameters as a vector of `Variable`
+   * @return a copy of the modules parameters as a vector of `Tensor`
    */
-  virtual std::vector<Variable> copyParams() const;
+  virtual std::vector<Tensor> copyParams() const;
 
   /**
    * Clears references to gradient Variables for all parameters in the module.
@@ -123,21 +124,21 @@ class FL_API Module {
    *
    * @param inputs the values to compute forward computation for the
    * module.
-   * @return a vector of `Variable` tensors containing the result of
+   * @return a vector of `Tensor` tensors containing the result of
    * the forward computation
    */
-  virtual std::vector<Variable> forward(
-      const std::vector<Variable>& inputs) = 0;
+  virtual std::vector<Tensor> forward(
+      const std::vector<Tensor>& inputs) = 0;
 
   /**
    * Overload for forward computation for the module.
    *
    * @param inputs the values to compute forward computation for the
    * module.
-   * @return a vector of `Variable` tensors containing the result of
+   * @return a vector of `Tensor` tensors containing the result of
    * the forward computation
    */
-  std::vector<Variable> operator()(const std::vector<Variable>& inputs);
+  std::vector<Tensor> operator()(const std::vector<Tensor>& inputs);
 
   /**
    * Clone the module via deep copy of its parameters and members.
@@ -158,20 +159,20 @@ class FL_API Module {
 
 /**
  * An extension of `Module` which supports only forward computation on a single
- * `Variable` with a single `Variable` as output.
+ * `Tensor` with a single `Tensor` as output.
  * For example, `Sigmoid` module can be derived from `UnaryModule`.
  */
 class FL_API UnaryModule : public Module {
  public:
   UnaryModule();
 
-  explicit UnaryModule(const std::vector<Variable>& params);
+  explicit UnaryModule(const std::vector<Tensor>& params);
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
-  virtual Variable forward(const Variable& input) = 0;
+  virtual Tensor forward(const Tensor& input) = 0;
 
-  Variable operator()(const Variable& input);
+  Tensor operator()(const Tensor& input);
 
   virtual ~UnaryModule() = default;
 
@@ -181,20 +182,20 @@ class FL_API UnaryModule : public Module {
 
 /**
  * An extension of `Module` which supports only forward computation on a pair of
- * `Variable`s with a single `Variable` as output.
+ * `Tensor`s with a single `Tensor` as output.
  * For example, `BinaryCrossEntropy` Loss can be derived from `BinaryModule`.
  */
 class FL_API BinaryModule : public Module {
  public:
   BinaryModule();
 
-  explicit BinaryModule(const std::vector<Variable>& params);
+  explicit BinaryModule(const std::vector<Tensor>& params);
 
-  std::vector<Variable> forward(const std::vector<Variable>& inputs) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& inputs) override;
 
-  virtual Variable forward(const Variable& input1, const Variable& input2) = 0;
+  virtual Tensor forward(const Tensor& input1, const Tensor& input2) = 0;
 
-  Variable operator()(const Variable& input1, const Variable& input2);
+  Tensor operator()(const Tensor& input1, const Tensor& input2);
 
   virtual ~BinaryModule() = default;
 

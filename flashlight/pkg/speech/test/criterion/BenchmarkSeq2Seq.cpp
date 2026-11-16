@@ -60,7 +60,7 @@ void timeForwardBackward() {
       0, /* maxDecoderOutputLen */
       {std::make_shared<ContentAttention>()} /* attentions */);
 
-  auto input = Variable(fl::randn({H, T, B}, fl::dtype::f32), true);
+  auto input = Tensor(fl::randn({H, T, B}, fl::dtype::f32), true);
   auto target = noGrad(
       (fl::rand({U, B}, fl::dtype::f32) * 0.99 * N).astype(fl::dtype::s32));
 

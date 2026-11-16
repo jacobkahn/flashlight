@@ -33,7 +33,7 @@ class LRUCache {
   explicit LRUCache(int n) : csize_(n) {}
 
   inline V* put(K k, std::unique_ptr<V>&& v) {
-    if (map_.find(k) == map_.end()) {
+    if (!map_.contains(k)) {
       // Not in cache, cache size too big
       if (dq_.size() == csize_) {
         map_.erase(dq_.back());
@@ -49,7 +49,7 @@ class LRUCache {
   }
 
   inline V* get(K const& k) {
-    if (map_.find(k) == map_.end()) {
+    if (!map_.contains(k)) {
       return nullptr;
     } else {
       // Move list node to front

@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 set(FL_PKG_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 function(register_package)

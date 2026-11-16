@@ -12,15 +12,25 @@
 #include "flashlight/fl/tensor/Compute.h"
 #include "flashlight/fl/tensor/DefaultTensorType.h"
 #include "flashlight/fl/tensor/Init.h"
+#include "flashlight/fl/tensor/JitTensorBase.h"
 #include "flashlight/fl/tensor/Random.h"
 #include "flashlight/fl/tensor/Shape.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
-#include "flashlight/fl/tensor/backend/jit/JitTensor.h"
-#include "flashlight/fl/tensor/backend/jit/JitTensorBase.h"
-#include "flashlight/fl/tensor/backend/jit/Utils.h"
-#include "flashlight/fl/tensor/backend/jit/ir/BinaryNode.h"
-#include "flashlight/fl/tensor/backend/jit/ir/ScalarNode.h"
+#include "flashlight/fl/tensor/ir/BinaryNode.h"
+#include "flashlight/fl/tensor/ir/ClipNode.h"
+#include "flashlight/fl/tensor/ir/ConcatenateNode.h"
+#include "flashlight/fl/tensor/ir/CumsumNode.h"
+#include "flashlight/fl/tensor/ir/FlipNode.h"
+#include "flashlight/fl/tensor/ir/IndexedUpdateNode.h"
+#include "flashlight/fl/tensor/ir/NodeUtils.h"
+#include "flashlight/fl/tensor/ir/PadNode.h"
+#include "flashlight/fl/tensor/ir/RollNode.h"
+#include "flashlight/fl/tensor/ir/ScalarNode.h"
+#include "flashlight/fl/tensor/ir/TileNode.h"
+#include "flashlight/fl/tensor/ir/TriangularNode.h"
+#include "flashlight/fl/tensor/ir/ValueNode.h"
+#include "flashlight/fl/tensor/ir/WhereNode.h"
 
 using namespace fl;
 
@@ -29,7 +39,7 @@ namespace {
 class JitTensorTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    fl::setDefaultTensorType<JitTensor<DefaultTensorType_t>>();
+    fl::setDefaultJitTensorType<DefaultBaseTensorType_t>();
   }
   TensorBackend& defaultBackend_ = DefaultTensorBackend_t::getInstance();
 };
@@ -93,7 +103,7 @@ struct MinFunctor {
 
 TEST_F(JitTensorTest, constructor) {
   const auto dataTensor = defaultBackend_.rand(Shape({2, 2}), dtype::f32);
-  const auto data = dataTensor.toHostVector<float>();
+  const auto data = dataTensor.toHostVectorSync<float>();
   const Tensor tensor =
       Tensor::fromBuffer(dataTensor.shape(), data.data(), Location::Host);
   const auto& jitTensor = toJitTensorBase(tensor);
@@ -197,6 +207,176 @@ TEST_F(JitTensorTest, min) {
 
 TEST_F(JitTensorTest, pow) {
   testBinaryOp(PowerFunctor(), BinaryOp::Pow);
+}
+
+TEST_F(JitTensorTest, tileBuildsTileNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto tiled = tile(input, {2});
+  auto node = toJitTensorBase(tiled).node();
+  ASSERT_TRUE(node->isTile());
+  auto& tileNode = node->impl<TileNode>();
+  ASSERT_EQ(tileNode.input(), inputNode);
+  ASSERT_EQ(tileNode.tileDims(), Shape({2}));
+  ASSERT_EQ(tileNode.shape(), Shape({4, 3}));
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, concatenateBuildsConcatenateNode) {
+  auto a = full({2, 3}, 1, dtype::s32);
+  auto b = full({2, 4}, 2, dtype::s32);
+  auto aNode = toJitTensorBase(a).node();
+  auto bNode = toJitTensorBase(b).node();
+  auto result = concatenate({a, b}, 1);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isConcatenate());
+  auto& concatNode = node->impl<ConcatenateNode>();
+  ASSERT_EQ(concatNode.input(0), aNode);
+  ASSERT_EQ(concatNode.input(1), bNode);
+  ASSERT_EQ(concatNode.numInputs(), 2u);
+  ASSERT_EQ(concatNode.axis(), 1u);
+  ASSERT_EQ(concatNode.shape(), Shape({2, 7}));
+  ASSERT_EQ(concatNode.dataType(), dtype::s32);
+  ASSERT_EQ(aNode->uses(), UseValList({{node, 0}}));
+  ASSERT_EQ(bNode->uses(), UseValList({{node, 1}}));
+}
+
+TEST_F(JitTensorTest, padBuildsPadNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto result = pad(input, {{1, 2}, {3, 4}}, PadType::Constant);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isPad());
+  auto& padNode = node->impl<PadNode>();
+  ASSERT_EQ(padNode.input(), inputNode);
+  ASSERT_EQ(
+      padNode.padWidths(), (std::vector<std::pair<int, int>>{{1, 2}, {3, 4}}));
+  ASSERT_EQ(padNode.padType(), PadType::Constant);
+  ASSERT_EQ(padNode.shape(), Shape({5, 10}));
+  ASSERT_EQ(padNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, flipBuildsFlipNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto flipped = fl::flip(input, 1);
+  auto node = toJitTensorBase(flipped).node();
+  ASSERT_TRUE(node->isFlip());
+  auto& flipNode = node->impl<FlipNode>();
+  ASSERT_EQ(flipNode.input(), inputNode);
+  ASSERT_EQ(flipNode.axis(), 1u);
+  ASSERT_EQ(flipNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(flipNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, trilBuildsTriangularNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto result = fl::tril(input, 1);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isTriangular());
+  auto& triangularNode = node->impl<TriangularNode>();
+  ASSERT_EQ(triangularNode.input(), inputNode);
+  ASSERT_EQ(triangularNode.mode(), TriangularMode::Lower);
+  ASSERT_EQ(triangularNode.diagonal(), 1);
+  ASSERT_EQ(triangularNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(triangularNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, triuBuildsTriangularNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto result = fl::triu(input, -1);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isTriangular());
+  auto& triangularNode = node->impl<TriangularNode>();
+  ASSERT_EQ(triangularNode.input(), inputNode);
+  ASSERT_EQ(triangularNode.mode(), TriangularMode::Upper);
+  ASSERT_EQ(triangularNode.diagonal(), -1);
+  ASSERT_EQ(triangularNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(triangularNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, clipBuildsClipNode) {
+  auto input = full({2, 3}, 2, dtype::s32);
+  auto low = full({2, 3}, 0, dtype::s32);
+  auto high = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto lowNode = toJitTensorBase(low).node();
+  auto highNode = toJitTensorBase(high).node();
+  auto clipped = fl::clip(input, low, high);
+  auto node = toJitTensorBase(clipped).node();
+  ASSERT_TRUE(node->isClip());
+  auto& clipNode = node->impl<ClipNode>();
+  ASSERT_EQ(clipNode.input(), inputNode);
+  ASSERT_EQ(clipNode.low(), lowNode);
+  ASSERT_EQ(clipNode.high(), highNode);
+  ASSERT_EQ(clipNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(clipNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+  ASSERT_EQ(lowNode->uses(), UseValList({{node, 1}}));
+  ASSERT_EQ(highNode->uses(), UseValList({{node, 2}}));
+}
+
+TEST_F(JitTensorTest, cumsumBuildsCumsumNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto result = fl::cumsum(input, 1);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isCumsum());
+  auto& cumsumNode = node->impl<CumsumNode>();
+  ASSERT_EQ(cumsumNode.input(), inputNode);
+  ASSERT_EQ(cumsumNode.axis(), 1u);
+  ASSERT_EQ(cumsumNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(cumsumNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, rollBuildsRollNode) {
+  auto input = full({2, 3}, 1, dtype::s32);
+  auto inputNode = toJitTensorBase(input).node();
+  auto result = fl::roll(input, -1, 1);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isRoll());
+  auto& rollNode = node->impl<RollNode>();
+  ASSERT_EQ(rollNode.input(), inputNode);
+  ASSERT_EQ(rollNode.shift(), 2);
+  ASSERT_EQ(rollNode.axis(), 1u);
+  ASSERT_EQ(rollNode.shape(), Shape({2, 3}));
+  ASSERT_EQ(rollNode.dataType(), dtype::s32);
+  ASSERT_EQ(inputNode->uses(), UseValList({{node, 0}}));
+}
+
+TEST_F(JitTensorTest, whereBuildsWhereNode) {
+  auto condition = full({2, 2}, 1, dtype::b8);
+  auto x = full({2, 2}, 1, dtype::s32);
+  auto y = full({2, 2}, 2, dtype::s32);
+  auto conditionNode = toJitTensorBase(condition).node();
+  auto xNode = toJitTensorBase(x).node();
+  auto yNode = toJitTensorBase(y).node();
+  auto result = where(condition, x, y);
+  auto node = toJitTensorBase(result).node();
+  ASSERT_TRUE(node->isWhere());
+  auto& whereNode = node->impl<WhereNode>();
+  ASSERT_EQ(whereNode.condition(), conditionNode);
+  ASSERT_EQ(whereNode.x(), xNode);
+  ASSERT_EQ(whereNode.y(), yNode);
+  ASSERT_EQ(whereNode.shape(), Shape({2, 2}));
+  ASSERT_EQ(whereNode.dataType(), dtype::s32);
+  ASSERT_EQ(conditionNode->uses(), UseValList({{node, 0}}));
+  ASSERT_EQ(xNode->uses(), UseValList({{node, 1}}));
+  ASSERT_EQ(yNode->uses(), UseValList({{node, 2}}));
+}
+
+TEST_F(JitTensorTest, whereRejectsNonBooleanCondition) {
+  auto condition = full({2, 2}, 1, dtype::s32);
+  auto x = full({2, 2}, 1, dtype::s32);
+  auto y = full({2, 2}, 2, dtype::s32);
+  EXPECT_THROW(where(condition, x, y), std::invalid_argument);
 }
 
 TEST_F(JitTensorTest, explicitEval) {
@@ -489,6 +669,92 @@ TEST_F(JitTensorTest, indexingWithIndexedDataUpdated) {
   ASSERT_TRUE(i2->isIndex());
   ASSERT_EQ(i2->impl<IndexNode>().indices().size(), 2);
   ASSERT_EQ(i2->impl<IndexNode>().indexedNode(), update);
+}
+
+// Verify that eval() compacts the JIT graph by replacing deep node chains
+// with a single ValueNode. Without compaction, repeated indexed updates
+// create O(N)-deep graphs that cause optimizer timeouts.
+TEST_F(JitTensorTest, EvalCompactsGraph) {
+  auto t = fl::rand({100});
+
+  // Build a chain of indexed updates
+  for (int i = 0; i < 50; i++) {
+    t(i) = fl::full({1}, static_cast<float>(i));
+  }
+
+  // Before eval: node should be a deep IndexedUpdateNode chain
+  auto& jitTensor = toJitTensorBase(t);
+  auto preEvalNode = jitTensor.node();
+  ASSERT_TRUE(preEvalNode->isIndexedUpdate());
+
+  // Count depth before eval
+  unsigned depthBefore = 0;
+  {
+    auto n = preEvalNode;
+    while (n->isIndexedUpdate()) {
+      depthBefore++;
+      n = n->impl<IndexedUpdateNode>().indexedNode();
+    }
+  }
+  ASSERT_GE(depthBefore, 50u);
+
+  // fl::eval computes the result AND compacts the graph
+  fl::eval(t);
+
+  // After eval: node should be a ValueNode (graph compacted)
+  auto postEvalNode = jitTensor.node();
+  ASSERT_TRUE(postEvalNode->isValue())
+      << "After eval, node should be a ValueNode but got "
+      << nodeTypeToString(postEvalNode->type());
+  ASSERT_EQ(countNodes(postEvalNode), 1u);
+
+  // Value should be correct
+  ASSERT_EQ(t(0).scalarSync<float>(), 0.0f);
+  ASSERT_EQ(t(49).scalarSync<float>(), 49.0f);
+}
+
+// Verify that repeated eval+update cycles maintain O(1) graph depth.
+// This is the pattern used by Jacobian tests: perturb, eval, perturb, eval, ...
+TEST_F(JitTensorTest, RepeatedEvalKeepsGraphShallow) {
+  auto t = fl::rand({100});
+  fl::eval(t);
+
+  for (int iter = 0; iter < 500; iter++) {
+    // Perturb 3 elements (mimics Jacobian test pattern)
+    t(iter % 100) = fl::full({1}, static_cast<float>(iter));
+    t((iter + 1) % 100) = fl::full({1}, static_cast<float>(iter + 1));
+    t((iter + 2) % 100) = fl::full({1}, static_cast<float>(iter + 2));
+    fl::eval(t);
+
+    // After each eval, graph should be compacted to a ValueNode
+    auto& jitTensor = toJitTensorBase(t);
+    ASSERT_TRUE(jitTensor.node()->isValue())
+        << "After eval at iter " << iter
+        << ", node should be ValueNode but got "
+        << nodeTypeToString(jitTensor.node()->type());
+    ASSERT_EQ(countNodes(jitTensor.node()), 1u);
+  }
+}
+
+// Stress test: large number of indexed updates without intermediate evals.
+// The optimizer and evaluator should handle deep graphs without stack overflow.
+TEST_F(JitTensorTest, DeepGraphNoStackOverflow) {
+  auto t = fl::rand({10});
+
+  // Build a very deep graph (5000 indexed updates)
+  for (int i = 0; i < 5000; i++) {
+    t(i % 10) = fl::full({1}, static_cast<float>(i));
+  }
+
+  // Single eval should handle the deep graph without crashing
+  fl::eval(t);
+
+  auto& jitTensor = toJitTensorBase(t);
+  ASSERT_TRUE(jitTensor.node()->isValue());
+  ASSERT_EQ(countNodes(jitTensor.node()), 1u);
+  // Last update to each position should be the final value
+  ASSERT_EQ(t(0).scalarSync<float>(), 4990.0f);
+  ASSERT_EQ(t(9).scalarSync<float>(), 4999.0f);
 }
 
 int main(int argc, char** argv) {

@@ -50,7 +50,7 @@ class FL_API Conformer : public Container {
   Conformer& operator=(const Conformer& other);
   Conformer& operator=(Conformer&& other) = default;
 
-  std::vector<Variable> forward(const std::vector<Variable>& input) override;
+  std::vector<Tensor> forward(const std::vector<Tensor>& input) override;
   std::unique_ptr<Module> clone() const override;
   std::string prettyString() const override;
 
@@ -69,9 +69,9 @@ class FL_API Conformer : public Container {
 
   void copy(const Conformer& other);
   void createLayers();
-  static Variable conformerInitLinear(int32_t inDim, int32_t outDim);
-  Variable mhsa(const Variable& input, const Variable& inputPadMask);
-  Variable conv(const Variable& input);
+  static Tensor conformerInitLinear(int32_t inDim, int32_t outDim);
+  Tensor mhsa(const Tensor& input, const Tensor& inputPadMask);
+  Tensor conv(const Tensor& input);
 
   Conformer() = default;
 

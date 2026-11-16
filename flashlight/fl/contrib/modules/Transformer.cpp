@@ -6,6 +6,7 @@
  */
 
 #include <cmath>
+#include <format>
 #include <stdexcept>
 
 #include "flashlight/fl/autograd/Functions.h"
@@ -15,7 +16,7 @@
 #include "flashlight/fl/tensor/Random.h"
 
 namespace {
-fl::Variable transformerInitLinear(int32_t inDim, int32_t outDim) {
+fl::Tensor transformerInitLinear(int32_t inDim, int32_t outDim) {
   float std = std::sqrt(1.0 / float(inDim));
   return fl::uniform(outDim, inDim, -std, std, fl::dtype::f32, true);
 }
@@ -49,8 +50,9 @@ Transformer::Transformer(
           transformerInitLinear(modelDim, headDim * nHeads))),
       wf_(std::make_shared<Linear>(
           transformerInitLinear(headDim * nHeads, modelDim))),
-      norm1_(std::make_shared<LayerNorm>(std::vector<int>({0, 3}))),
-      norm2_(std::make_shared<LayerNorm>(std::vector<int>({0, 3}))) {
+      // Row-major: input is {B, T, C}, normalize over C (axis 2)
+      norm1_(std::make_shared<LayerNorm>(std::vector<int>({2}))),
+      norm2_(std::make_shared<LayerNorm>(std::vector<int>({2}))) {
   if (bptt > 0) {
     params_.push_back(
         uniform(2 * bptt - 1, headDim, -0.1, 0.1, fl::dtype::f32, true));
@@ -104,36 +106,38 @@ void Transformer::createLayers() {
   add(norm2_);
 }
 
-Variable Transformer::mlp(const Variable& input) {
+Tensor Transformer::mlp(const Tensor& input) {
   float pDropout = train_ ? pDropout_ : 0.0;
-  return (*w2_)(dropout(relu((*w1_)(input)), pDropout));
+  return (*w2_)(autograd::dropout(autograd::relu((*w1_)(input)), pDropout));
 }
 
-Variable Transformer::getMask(int32_t n, bool cache) {
+Tensor Transformer::getMask(int32_t n, bool cache) {
   auto mask = fl::tril(fl::full({n, n}, 1.0));
   if (cache) {
     auto maskCache = fl::triu(fl::full({n, n}, 1.0));
     mask = fl::concatenate(1, maskCache, mask);
   }
-  return Variable(fl::log(mask), false);
+  return Tensor(fl::log(mask), false);
 }
 
-Variable Transformer::selfAttention(const std::vector<Variable>& input) {
+Tensor Transformer::selfAttention(const std::vector<Tensor>& input) {
   // previous step[optionally], input, padMask
   const auto& encoderInput = input.at(input.size() - 2);
-  // in case of previous state input[0] has size CxT_prevxB
-  int n = input[0].dim(1), bsz = input[0].dim(2);
+  // Row-major: input is {B, T, C}
+  int n = input[0].dim(1), bsz = input[0].dim(0);
   double pDrop = train_ ? pDropout_ : 0.0;
 
-  auto q = transpose((*wq_)(encoderInput), {1, 0, 2});
-  std::vector<fl::Variable> inputWithState(input.begin(), input.end() - 1);
-  auto k = transpose((*wk_)(concatenate(inputWithState, 1)), {1, 0, 2});
-  auto v = transpose((*wv_)(concatenate(inputWithState, 1)), {1, 0, 2});
+  auto q = (*wq_)(encoderInput);
+  std::vector<fl::Tensor> inputWithState(input.begin(), input.end() - 1);
+  auto k = (*wk_)(autograd::concatenate(inputWithState, 1));
+  auto v = (*wv_)(autograd::concatenate(inputWithState, 1));
 
-  Variable mask, posEmb;
+  Tensor mask, posEmb;
   if (bptt_ > 0) {
-    posEmb =
-        tile(params_[0].astype(encoderInput.type()), {1, 1, nHeads_ * bsz});
+    // params_[0]: {2*bptt-1, headDim}
+    // Need: {nH*bsz, 2*bptt-1, headDim}
+    auto pe = autograd::unsqueeze(params_[0].astype(encoderInput.type()), 0);
+    posEmb = autograd::tile(pe, {nHeads_ * bsz, 1, 1});
   }
   if (useMask_ && encoderInput.dim(1) > 1) {
     // mask future if we use the previous state (then n is previous time)
@@ -142,29 +146,28 @@ Variable Transformer::selfAttention(const std::vector<Variable>& input) {
 
   int offset = (input.size() == 2) ? 0 : n;
 
-  // time x batch
-  fl::Variable padMask;
+  // padMask: {B, T} in row-major
+  fl::Tensor padMask;
   if (!input.back().isEmpty()) {
-    auto padMaskArr = input.back().tensor();
-    Shape newMaskShape = {encoderInput.dim(1), encoderInput.dim(2)};
-    // TODO{fl::Tensor}{resize} - emulate the ArrayFire resize operation for
-    // transformer pad mask
+    auto padMaskArr = input.back();
+    Shape newMaskShape = {encoderInput.dim(0), encoderInput.dim(1)};
     if (padMaskArr.elements() != newMaskShape.elements()) {
       throw std::runtime_error(
           "Transformer::selfAttention - pad mask requires resize. "
           "This behavior will be fixed in a future release ");
     }
     padMaskArr = fl::reshape(padMaskArr, newMaskShape);
-    padMask = fl::Variable(fl::log(padMaskArr), false);
+    padMask = fl::Tensor(fl::log(padMaskArr.astype(fl::dtype::f32)), false);
   }
-  auto result = multiheadAttention(
+  auto result = autograd::multiheadAttention(
       q, k, v, posEmb, mask, padMask, nHeads_, pDrop, offset);
-  result = (*wf_)(transpose(result, {1, 0, 2}));
+  // multiheadAttention returns {B, T, modelDim}. Linear on last dim.
+  result = (*wf_)(result);
 
   return result;
 }
 
-std::vector<Variable> Transformer::forward(const std::vector<Variable>& input) {
+std::vector<Tensor> Transformer::forward(const std::vector<Tensor>& input) {
   // previous step[optionally], input, padMask
   // padMask should be empty if previous step is provided
   // padMask is expected to have "1" on the used positions and "0" on padded
@@ -177,7 +180,7 @@ std::vector<Variable> Transformer::forward(const std::vector<Variable>& input) {
   if (x.ndim() != 3) {
     throw std::invalid_argument(
         "Transformer::forward - input should be of 3 dimensions "
-        "expects an input of size C x T x B - see documentation.");
+        "expects an input of size B x T x C - see documentation.");
   }
 
   if (!input.back().isEmpty()) {
@@ -186,7 +189,7 @@ std::vector<Variable> Transformer::forward(const std::vector<Variable>& input) {
           "Transformer::forward - invalid size for pad mask - "
           "must have at least two dimensions");
 
-    } else if (x.dim(2) != input.back().dim(1)) {
+    } else if (x.dim(0) != input.back().dim(0)) {
       throw std::invalid_argument(
           "Transformer::forward - invalid inputs for transformer:"
           " input and mask batch sizes are different");
@@ -194,7 +197,7 @@ std::vector<Variable> Transformer::forward(const std::vector<Variable>& input) {
   }
 
   float f = 1.0;
-  if (train_ && (fl::rand({1}).scalar<float>() < pLayerdrop_)) {
+  if (train_ && (fl::rand({1}).scalarSync<float>() < pLayerdrop_)) {
     f = 0.0;
   }
   if (preLN_) {
@@ -219,14 +222,10 @@ std::unique_ptr<Module> Transformer::clone() const {
 }
 
 std::string Transformer::prettyString() const {
-  std::ostringstream ss;
-  ss << "Transformer (nHeads: " << nHeads_ << "), "
-     << "(pDropout: " << pDropout_ << "), "
-     << "(pLayerdrop: " << pLayerdrop_ << "), "
-     << "(bptt: " << bptt_ << "), "
-     << "(useMask: " << useMask_ << "), "
-     << "(preLayerNorm: " << preLN_ << ")";
-  return ss.str();
+  return std::format(
+      "Transformer (nHeads: {}), (pDropout: {}), (pLayerdrop: {}), "
+      "(bptt: {}), (useMask: {}), (preLayerNorm: {})",
+      nHeads_, pDropout_, pLayerdrop_, bptt_, useMask_, preLN_);
 }
 
 Transformer::Transformer() = default;

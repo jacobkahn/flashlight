@@ -7,7 +7,9 @@
 
 #include "flashlight/fl/nn/modules/Container.h"
 
-#include "flashlight/fl/autograd/Variable.h"
+#include <format>
+
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -51,8 +53,8 @@ void Container::train() {
   train_ = true;
 
   for (int i = 0; i < params_.size(); ++i) {
-    if (childParamIdx_.find(i) == childParamIdx_.end()) {
-      params_[i].setCalcGrad(true);
+    if (!childParamIdx_.contains(i)) {
+      params_[i].setRequiresGrad(true);
     }
   }
 
@@ -65,8 +67,8 @@ void Container::eval() {
   train_ = false;
 
   for (int i = 0; i < params_.size(); ++i) {
-    if (childParamIdx_.find(i) == childParamIdx_.end()) {
-      params_[i].setCalcGrad(false);
+    if (!childParamIdx_.contains(i)) {
+      params_[i].setRequiresGrad(false);
     }
   }
 
@@ -75,7 +77,7 @@ void Container::eval() {
   }
 }
 
-void Container::setParams(const Variable& var, int position) {
+void Container::setParams(const Tensor& var, int position) {
   Module::setParams(var, position);
   auto indices = childParamIdx_.find(position);
   if (indices != childParamIdx_.end()) {
@@ -86,21 +88,20 @@ void Container::setParams(const Variable& var, int position) {
 }
 
 std::string Container::prettyString() const {
-  std::ostringstream ss;
-  ss << " [input";
-  for (int i = 0; i < modules_.size(); ++i) {
-    ss << " -> (" << i << ")";
+  std::string result = " [input";
+  for (int i = 0; i < static_cast<int>(modules_.size()); ++i) {
+    result += std::format(" -> ({})", i);
   }
-  ss << " -> output]";
-  for (int i = 0; i < modules_.size(); ++i) {
-    ss << "\n\t(" << i << "): " << modules_[i]->prettyString();
+  result += " -> output]";
+  for (int i = 0; i < static_cast<int>(modules_.size()); ++i) {
+    result += std::format("\n\t({}): {}", i, modules_[i]->prettyString());
   }
-  return ss.str();
+  return result;
 }
 
 Sequential::Sequential() = default;
 
-std::vector<Variable> Sequential::forward(const std::vector<Variable>& input) {
+std::vector<Tensor> Sequential::forward(const std::vector<Tensor>& input) {
   auto output = input;
   for (auto& module : modules_) {
     output = module->forward(output);
@@ -108,8 +109,8 @@ std::vector<Variable> Sequential::forward(const std::vector<Variable>& input) {
   return output;
 }
 
-Variable Sequential::forward(const Variable& input) {
-  std::vector<Variable> output = {input};
+Tensor Sequential::forward(const Tensor& input) {
+  std::vector<Tensor> output = {input};
   for (auto& module : modules_) {
     output = module->forward(output);
   }
@@ -119,22 +120,20 @@ Variable Sequential::forward(const Variable& input) {
   return output.front();
 }
 
-Variable Sequential::operator()(const Variable& input) {
+Tensor Sequential::operator()(const Tensor& input) {
   return this->forward(input);
 }
 
 std::string Sequential::prettyString() const {
-  std::ostringstream ss;
-  ss << "Sequential";
-  ss << " [input";
-  for (int i = 0; i < modules_.size(); ++i) {
-    ss << " -> (" << i << ")";
+  std::string result = "Sequential [input";
+  for (int i = 0; i < static_cast<int>(modules_.size()); ++i) {
+    result += std::format(" -> ({})", i);
   }
-  ss << " -> output]";
-  for (int i = 0; i < modules_.size(); ++i) {
-    ss << "\n\t(" << i << "): " << modules_[i]->prettyString();
+  result += " -> output]";
+  for (int i = 0; i < static_cast<int>(modules_.size()); ++i) {
+    result += std::format("\n\t({}): {}", i, modules_[i]->prettyString());
   }
-  return ss.str();
+  return result;
 }
 
 } // namespace fl

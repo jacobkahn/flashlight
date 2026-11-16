@@ -21,9 +21,9 @@ namespace pkg {
 namespace speech {
 
 struct TS2SState {
-  fl::Variable alpha;
-  std::vector<fl::Variable> hidden;
-  fl::Variable summary;
+  fl::Tensor alpha;
+  std::vector<fl::Tensor> hidden;
+  fl::Tensor summary;
   int step;
 
   TS2SState() : step(0) {}
@@ -50,31 +50,31 @@ class TransformerCriterion : public SequenceCriterion {
 
   std::unique_ptr<Module> clone() const override;
 
-  std::vector<fl::Variable> forward(
-      const std::vector<fl::Variable>& inputs) override;
+  std::vector<fl::Tensor> forward(
+      const std::vector<fl::Tensor>& inputs) override;
 
   Tensor viterbiPath(const Tensor& input, const Tensor& inputSizes = Tensor())
       override;
 
-  std::pair<Tensor, fl::Variable>
+  std::pair<Tensor, fl::Tensor>
   viterbiPathBase(const Tensor& input, const Tensor& inputSizes, bool saveAttn);
 
-  std::pair<fl::Variable, fl::Variable> vectorizedDecoder(
-      const fl::Variable& input,
-      const fl::Variable& target,
+  std::pair<fl::Tensor, fl::Tensor> vectorizedDecoder(
+      const fl::Tensor& input,
+      const fl::Tensor& target,
       const Tensor& inputSizes,
       const Tensor& targetSizes);
 
-  std::pair<fl::Variable, TS2SState> decodeStep(
-      const fl::Variable& xEncoded,
-      const fl::Variable& y,
+  std::pair<fl::Tensor, TS2SState> decodeStep(
+      const fl::Tensor& xEncoded,
+      const fl::Tensor& y,
       const TS2SState& inState,
       const Tensor& inputSizes) const;
 
   std::pair<std::vector<std::vector<float>>, std::vector<TS2SStatePtr>>
   decodeBatchStep(
-      const fl::Variable& xEncoded,
-      std::vector<fl::Variable>& ys,
+      const fl::Tensor& xEncoded,
+      std::vector<fl::Tensor>& ys,
       const std::vector<TS2SState*>& inStates,
       const int attentionThreshold,
       const float smoothingTemperature) const;
@@ -102,7 +102,7 @@ class TransformerCriterion : public SequenceCriterion {
     return std::static_pointer_cast<AttentionBase>(module(nLayer_ + 2));
   }
 
-  fl::Variable startEmbedding() const {
+  fl::Tensor startEmbedding() const {
     return params_.back();
   }
 
@@ -133,9 +133,9 @@ class TransformerCriterion : public SequenceCriterion {
 };
 
 struct TS2SDecoderBuffer {
-  fl::Variable input;
+  fl::Tensor input;
   TS2SState dummyState;
-  std::vector<fl::Variable> ys;
+  std::vector<fl::Tensor> ys;
   std::vector<TS2SState*> prevStates;
   int attentionThreshold;
   double smoothingTemperature;

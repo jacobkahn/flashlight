@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
-
 # ---------------------------- Backend-specific -----------------------------
 if (FL_USE_CUDA)
   # Build WarpCTC

@@ -1,12 +1,8 @@
-cmake_minimum_required(VERSION 3.16)
-
 target_sources(
   flashlight
   PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/Utils.cpp
   ${CMAKE_CURRENT_LIST_DIR}/DevicePtr.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/Defines.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/DynamicBenchmark.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Logging.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Histogram.cpp
   ${CMAKE_CURRENT_LIST_DIR}/Timer.cpp
@@ -25,21 +21,13 @@ target_link_libraries(flashlight PUBLIC Threads::Threads)
 # Dynamic lib loading needed for Plugins
 target_link_libraries(flashlight PUBLIC ${CMAKE_DL_LIBS})
 
-# To support __VA_ARGS__ for serialization macros
+# Standard-conforming preprocessor for __VA_ARGS__ in serialization macros
 if (MSVC)
-  if (MSVC_VERSION LESS 1920)
-    target_compile_options(flashlight PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/experimental:preprocessor>) # MSVC 2017
-  else()
-    target_compile_options(flashlight PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>) # MSVC 2019+
-  endif()
+  target_compile_options(flashlight PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>)
 endif()
 
-# std::filesystem linking -- remove this when requiring gcc >= 9
-if (NOT MSVC)
-  find_package(Filesystem REQUIRED COMPONENTS Final Experimental)
-  setup_install_find_module(${PROJECT_SOURCE_DIR}/cmake/FindFilesystem.cmake)
-  target_link_libraries(flashlight PUBLIC std::filesystem)
-endif()
+# std::filesystem is part of the standard library in C++17+/GCC >= 9
+# No extra linking needed since we require C++20
 
 # backward
 include(${CMAKE_CURRENT_LIST_DIR}/stacktrace/CMakeLists.txt)

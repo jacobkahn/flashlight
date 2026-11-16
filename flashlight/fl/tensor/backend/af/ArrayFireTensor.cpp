@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "flashlight/fl/tensor/Index.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/backend/af/AdvancedIndex.h"
 #include "flashlight/fl/tensor/backend/af/ArrayFireBackend.h"
 #include "flashlight/fl/tensor/backend/af/Utils.h"
@@ -91,6 +91,16 @@ ArrayFireTensor::ArrayFireTensor(
       handle_(ArrayComponent()),
       // ArrayFire only supports 2D sparsity
       numDims_(2) {}
+
+ArrayFireTensor::~ArrayFireTensor() {
+  // If device() was called, af_get_device_ptr set a userLock on this array's
+  // buffer in AF's memory manager. We must release it here so the buffer can
+  // be reclaimed. Without this, the buffer leaks in AF's lockedMap even after
+  // the af::array refcount drops to zero.
+  if (devicePtrRequested_ && arrayHandle_ && arrayHandle_->get() != 0) {
+    af_unlock_array(arrayHandle_->get());
+  }
+}
 
 unsigned ArrayFireTensor::numDims() const {
   return numDims_;
@@ -176,18 +186,18 @@ TensorBackend& ArrayFireTensor::backend() const {
   return ::fl::ArrayFireBackend::getInstance();
 }
 
-const Shape& ArrayFireTensor::shape() {
+const Shape& ArrayFireTensor::shape() const {
   // Update the Shape in-place. Doesn't change any underlying data; only the
   // mirrored Shape metadata.
   detail::afToFlDims(getHandle().dims(), numDims(), shape_);
   return shape_;
 }
 
-fl::dtype ArrayFireTensor::type() {
+fl::dtype ArrayFireTensor::type() const {
   return detail::afToFlType(getHandle().type());
 }
 
-bool ArrayFireTensor::isSparse() {
+bool ArrayFireTensor::isSparse() const {
   return getHandle().issparse();
 }
 
@@ -195,7 +205,7 @@ af::dtype ArrayFireTensor::afHandleType() {
   return arrayHandle_->type();
 }
 
-Location ArrayFireTensor::location() {
+Location ArrayFireTensor::location() const {
   switch (af::getBackendId(getHandle())) {
     case AF_BACKEND_CUDA:
     case AF_BACKEND_OPENCL:
@@ -208,20 +218,22 @@ Location ArrayFireTensor::location() {
   }
 }
 
-void ArrayFireTensor::scalar(void* out) {
+void ArrayFireTensor::scalarSync(void* out) {
   AF_CHECK(af_get_scalar(out, getHandle().get()));
 }
 
 void ArrayFireTensor::device(void** out) {
   AF_CHECK(af_get_device_ptr(out, getHandle().get()));
+  devicePtrRequested_ = true;
 }
 
-void ArrayFireTensor::host(void* out) {
+void ArrayFireTensor::hostSync(void* out) {
   AF_CHECK(af_get_data_ptr(out, getHandle().get()));
 }
 
 void ArrayFireTensor::unlock() {
   AF_CHECK(af_unlock_array(getHandle().get()));
+  devicePtrRequested_ = false; // prevent double-unlock in destructor
 }
 
 bool ArrayFireTensor::isLocked() {
@@ -235,11 +247,13 @@ bool ArrayFireTensor::isLocked() {
   return res;
 }
 
-bool ArrayFireTensor::isContiguous() {
+bool ArrayFireTensor::isContiguous() const {
   return af::isLinear(getHandle());
 }
 
-Shape ArrayFireTensor::strides() {
+Shape ArrayFireTensor::strides() const {
+  // AF strides are in AF dimension order (dim 0 = innermost).
+  // afToFlDims reverses to FL dimension order (dim 0 = outermost).
   return detail::afToFlDims(af::getStrides(getHandle()), numDims());
 }
 
@@ -282,16 +296,25 @@ Tensor ArrayFireTensor::index(const std::vector<Index>& indices) {
         "than the number of af indices");
   }
 
-  // Fill in corresponding index types for each af index
+  // Fill in corresponding index types for each af index.
   std::vector<detail::IndexType> indexTypes(afIndices.size());
-  size_t i = 0;
-  for (; i < indices.size(); ++i) {
-    indexTypes[i] = indices[i].type();
-    afIndices[i] = detail::flToAfIndex(indices[i]);
-  }
-  // If we're adding implicit spans, fill those indexTypes in
-  for (; i < afIndices.size(); ++i) {
-    indexTypes[i] = detail::IndexType::Span;
+  if (completeTensorIndex) {
+    indexTypes[0] = indices[0].type();
+    afIndices[0] = detail::flToAfIndex(indices[0]);
+  } else {
+    // FL indices are in FL dimension order (dim 0 = outermost).
+    // AF expects indices in AF dimension order (dim 0 = innermost).
+    // FL dim j = AF dim (numDims_-1-j), so reverse the indices.
+    // Initialize all as spans
+    for (size_t j = 0; j < afIndices.size(); ++j) {
+      indexTypes[j] = detail::IndexType::Span;
+    }
+    // Place FL indices at reversed AF positions
+    for (size_t i = 0; i < indices.size(); ++i) {
+      unsigned afPos = numDims_ - 1 - i;
+      indexTypes[afPos] = indices[i].type();
+      afIndices[afPos] = detail::flToAfIndex(indices[i]);
+    }
   }
 
   getHandle(); // if this tensor was a view, run indexing and promote
@@ -311,7 +334,7 @@ Tensor ArrayFireTensor::index(const std::vector<Index>& indices) {
       }
     }
   }
-  newNumDims = std::max(newNumDims, 1u); // can never index to a 0 dim tensor
+  // newNumDims == 0 means all indices were Literal => scalar result (shape {})
 
   return fl::Tensor(std::unique_ptr<ArrayFireTensor>(new ArrayFireTensor(
       arrayHandle_,
@@ -330,11 +353,13 @@ Tensor ArrayFireTensor::flat(const Index& idx) const {
   // Return a lazy indexing operation. Indexing with a single index on an
   // ArrayFire tensor (with a type that is not an af::array) ends up doing
   // flat indexing, so all index assignment operators will work as they are.
+  // Literal index extracts a scalar (ndim=0); Range/Tensor keeps 1D
+  unsigned flatNumDims = (idx.type() == detail::IndexType::Literal) ? 0 : 1;
   return fl::Tensor(std::unique_ptr<ArrayFireTensor>(new ArrayFireTensor(
       arrayHandle_,
       {detail::flToAfIndex(idx)},
       {idx.type()},
-      /* numDims = */ 1,
+      flatNumDims,
       /* isFlat = */ true)));
 }
 
@@ -403,8 +428,9 @@ af::array ArrayFireTensor::adjustInPlaceOperandDims(const Tensor& operand) {
   using detail::IndexType;
   if (indices_ && indices_.value().size() == 1) {
     // This case is only reachable via tensor-based indexing or indexing on a
-    // tensor via Tensor::flat()
-    if (numDims_ != 1) {
+    // tensor via Tensor::flat(). numDims_ == 0 for scalar (flat literal),
+    // numDims_ == 1 for 1D slice (flat range/tensor).
+    if (numDims_ > 1) {
       throw std::invalid_argument(
           "ArrayFireTensor::adjustInPlaceOperandDims "
           "index size was 1 but tensor has greater than 1 dimension.");
@@ -499,7 +525,6 @@ ASSIGN_OP(inPlaceSubtract, -=);
 ASSIGN_OP(inPlaceMultiply, *=);
 ASSIGN_OP(inPlaceDivide, /=);
 
-// Instantiate definitions for type literals - those remain unchanged:
 ASSIGN_OP_LITERALS(assign, =);
 void ArrayFireTensor::assign(const Tensor& tensor) {
   std::visit(
@@ -524,7 +549,6 @@ void ArrayFireTensor::assign(const Tensor& tensor) {
  * If performing someTensor(index1, ...) += anotherTensor, call this kernel, as
  * it properly-handles the case of repeated indices.
  */
-// Instantiate definitions for type literals - those remain unchanged:
 ASSIGN_OP_LITERALS(inPlaceAdd, +=);
 // Special tensor op:
 void ArrayFireTensor::inPlaceAdd(const Tensor& tensor) {

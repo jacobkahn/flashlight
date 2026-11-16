@@ -99,25 +99,25 @@ std::unique_ptr<Module> ViT::clone() const {
   return std::make_unique<ViT>(*this);
 }
 
-std::vector<fl::Variable> ViT::forward(
-    const std::vector<fl::Variable>& inputs) {
+std::vector<fl::Tensor> ViT::forward(
+    const std::vector<fl::Tensor>& inputs) {
   // Patching
   auto output = patchEmbedding_->forward(inputs[0]); // H x W x C x B
-  output = moddims(output, {-1, 1, 0, 0}); // T x 1 x C x B
-  output = reorder(output, {2, 0, 3, 1}); // C x T x B x 1
-  output = moddims(output, {0, 0, 0}); // C x T x B
+  output = autograd::reshape(output, {-1, 1, 0, 0}); // T x 1 x C x B
+  output = autograd::transpose(output, {2, 0, 3, 1}); // C x T x B x 1
+  output = autograd::reshape(output, {0, 0, 0}); // C x T x B
   auto B = output.dim(2);
 
   // Prepending the class token
   auto clsToken =
-      tile(params_[0], {1, 1, B}).astype(output.type()); // C x 1 x B
-  output = concatenate({clsToken, output}, 1);
+      autograd::tile(params_[0], {1, 1, B}).astype(output.type()); // C x 1 x B
+  output = autograd::concatenate({clsToken, output}, 1);
 
   // Positional embedding
-  auto posEmb = tile(params_[1], {1, 1, B}).astype(output.type());
+  auto posEmb = autograd::tile(params_[1], {1, 1, B}).astype(output.type());
   output = output + posEmb;
   if (train_) {
-    output = dropout(output, pDropout_);
+    output = autograd::dropout(output, pDropout_);
   }
 
   // Transformers
@@ -127,7 +127,7 @@ std::vector<fl::Variable> ViT::forward(
 
   // Linear
   output = ln_->forward(output); // C x T x B
-  output = reorder(output, {0, 2, 1})(fl::span, fl::span, 0); // C x B x 1
+  output = autograd::transpose(output, {0, 2, 1})(fl::span, fl::span, 0); // C x B x 1
   output = linearOut_->forward(output);
 
   return {output};

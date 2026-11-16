@@ -127,4 +127,33 @@ class FL_API Shape {
  */
 FL_API std::ostream& operator<<(std::ostream& ostr, const Shape& s);
 
+/**
+ * Compute row-major (C-contiguous) strides for the given shape.
+ *
+ * For a shape (d0, d1, ..., dn), the strides are:
+ *   stride[i] = d[i+1] * d[i+2] * ... * d[n]
+ *   stride[n] = 1
+ *
+ * Scalars (ndim == 0) return Shape({1}).
+ */
+FL_API Shape contiguousStrides(const Shape& shape);
+
+/**
+ * Compute the broadcast output shape for two shapes using left-aligned
+ * broadcasting (Flashlight convention: dim 0 is the leading dimension).
+ *
+ * Rules:
+ * - Shapes are compared starting from dimension 0.
+ * - If one shape has fewer dimensions, missing trailing dimensions are treated
+ *   as 1.
+ * - For each dimension, the sizes must be equal, or one must be 1.
+ * - The output size for that dimension is the maximum of the two sizes.
+ *
+ * @param[in] lhs the first shape
+ * @param[in] rhs the second shape
+ * @return the broadcast output shape
+ * @throws std::invalid_argument if the shapes are not broadcast-compatible
+ */
+FL_API Shape broadcastShapes(const Shape& lhs, const Shape& rhs);
+
 } // namespace fl

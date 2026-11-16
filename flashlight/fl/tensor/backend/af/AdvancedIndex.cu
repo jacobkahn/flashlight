@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 #include "flashlight/fl/tensor/Types.h"
 
 #define GRID_SIZE 32

@@ -50,7 +50,7 @@ class FL_API AdaptiveEmbedding : public UnaryModule {
       std::vector<int> cutoff,
       float divValue = 4);
 
-  Variable forward(const Variable& input) override;
+  Tensor forward(const Tensor& input) override;
 
   std::unique_ptr<Module> clone() const override;
 

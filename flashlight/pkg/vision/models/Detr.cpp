@@ -89,7 +89,7 @@ Detr::Detr(
   add(posEmbed_);
 }
 
-std::vector<Variable> Detr::forward(const std::vector<Variable>& input) {
+std::vector<Tensor> Detr::forward(const std::vector<Tensor>& input) {
   // input: {input, mask}
   if (input.size() != 2) {
     throw std::invalid_argument(
@@ -100,16 +100,16 @@ std::vector<Variable> Detr::forward(const std::vector<Variable>& input) {
   return forwardTransformer({feature, input[1]});
 }
 
-Variable Detr::forwardBackbone(const Variable& input) {
+Tensor Detr::forwardBackbone(const Tensor& input) {
   return backbone_->forward({input})[1];
 }
 
-std::vector<Variable> Detr::forwardTransformer(
-    const std::vector<Variable>& input) {
+std::vector<Tensor> Detr::forwardTransformer(
+    const std::vector<Tensor>& input) {
   // input: {feature, mask}
-  fl::Variable mask = fl::Variable(
+  fl::Tensor mask = fl::Tensor(
       fl::resize(
-          input[1].tensor(), {input[0].shape()}, InterpolationMode::Nearest),
+          input[1], {input[0].shape()}, InterpolationMode::Nearest),
       true);
   auto inputProjection = inputProj_->forward(input[0]);
   auto posEmbed = posEmbed_->forward({mask})[0];
@@ -136,9 +136,9 @@ std::string Detr::prettyString() const {
   return ss.str();
 }
 
-std::vector<fl::Variable> Detr::paramsWithoutBackbone() {
-  std::vector<fl::Variable> results;
-  std::vector<std::vector<fl::Variable>> childParams;
+std::vector<fl::Tensor> Detr::paramsWithoutBackbone() {
+  std::vector<fl::Tensor> results;
+  std::vector<std::vector<fl::Tensor>> childParams;
   childParams.push_back(transformer_->params());
   childParams.push_back(classEmbed_->params());
   childParams.push_back(bboxEmbed_->params());
@@ -150,7 +150,7 @@ std::vector<fl::Variable> Detr::paramsWithoutBackbone() {
   return results;
 }
 
-std::vector<fl::Variable> Detr::backboneParams() {
+std::vector<fl::Tensor> Detr::backboneParams() {
   return backbone_->params();
 }
 

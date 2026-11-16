@@ -7,16 +7,18 @@
 
 #include "flashlight/fl/nn/modules/Transform.h"
 
-#include "flashlight/fl/autograd/Variable.h"
+#include <format>
+
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
 Transform::Transform(
-    const std::function<Variable(const Variable&)>& func,
+    const std::function<Tensor(const Tensor&)>& func,
     const std::string& name /* = "" */)
     : func_(func), name_(name) {}
 
-Variable Transform::forward(const Variable& input) {
+Tensor Transform::forward(const Tensor& input) {
   return func_(input);
 }
 
@@ -25,9 +27,7 @@ std::unique_ptr<Module> Transform::clone() const {
 }
 
 std::string Transform::prettyString() const {
-  std::ostringstream ss;
-  ss << "Transform ('" << name_ << "')";
-  return ss.str();
+  return std::format("Transform ('{}')", name_);
 }
 
 } // namespace fl

@@ -57,7 +57,7 @@ int main(int argc, const char** argv) {
     optim = std::make_unique<SGDOptimizer>(model.params(), lr, mu);
   }
 
-  Variable result, l;
+  Tensor result, l;
   for (int i = 0; i < 1000; i++) {
     for (int j = 0; j < numSamples; j++) {
       model.train();
@@ -87,11 +87,11 @@ int main(int argc, const char** argv) {
 
       // Calculate loss
       // TODO: Use loss function
-      Tensor diff = out - result.tensor();
+      Tensor diff = out - result;
       std::cout << "Average Error at iteration (" << i + 1
-                << ") : " << fl::mean(fl::abs(diff)).scalar<float>() << "\n";
+                << ") : " << fl::mean(fl::abs(diff)).scalarSync<float>() << "\n";
       std::cout << "Predicted\n"
-                << result.tensor() << std::endl
+                << result << std::endl
                 << "Expected\n"
                 << out << std::endl;
     }

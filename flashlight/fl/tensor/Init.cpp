@@ -10,8 +10,6 @@
 #include <mutex>
 
 #include "flashlight/fl/common/Logging.h"
-#include "flashlight/fl/tensor/DefaultTensorType.h"
-#include "flashlight/fl/tensor/TensorBackend.h"
 
 namespace fl {
 namespace {
@@ -19,16 +17,17 @@ std::once_flag flInitFlag;
 }
 
 /**
- * Initialize Flashlight. Performs setup, including:
- * - Ensures default tensor backend globals are initialized, including memory
- *   management, tensor backend state, computation stremas, etc.
- * - Sets signal handlers helpful for debugging, if enabled.
+ * Initialize Flashlight. Sets up logging and signal handlers.
  *
- * Body is only run once per process. Subsequent calls will be noops.
+ * Tensor backend initialization is lazy — the default backend singleton is
+ * created on first use (e.g., when the first Tensor is constructed). This
+ * avoids unnecessarily initializing backends (and their heavy dependencies
+ * like CUDA) that may be overridden via setDefaultTensorType<T>().
+ *
+ * Body is only run once per process. Subsequent calls are no-ops.
  */
 void init() {
   std::call_once(flInitFlag, []() {
-    defaultTensorBackend();
     initLogging();
   });
 }

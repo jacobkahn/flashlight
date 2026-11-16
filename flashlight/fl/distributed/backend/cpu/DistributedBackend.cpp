@@ -21,7 +21,7 @@
 
 #include "flashlight/fl/common/DevicePtr.h"
 #include "flashlight/fl/distributed/LRUCache.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace {
 std::shared_ptr<gloo::mpi::Context> glooContext_;
@@ -114,7 +114,9 @@ void allReduce(fl::Tensor& tensor, bool async /* = false */) {
     cacheTensor_ =
         fl::Tensor({static_cast<long long>(tensorSize)}, fl::dtype::b8);
   }
-  DevicePtr tensorPtr(tensor);
+  // memcpy and Gloo allreduce treat the buffer as flat contiguous
+  auto contiguousTensor = tensor.asContiguousTensor();
+  DevicePtr tensorPtr(contiguousTensor);
   DevicePtr cacheTensorPtr(cacheTensor_);
   memcpy(cacheTensorPtr.get(), tensorPtr.get(), tensorSize);
   switch (tensor.type()) {

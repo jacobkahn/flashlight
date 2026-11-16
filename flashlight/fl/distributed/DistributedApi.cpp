@@ -8,7 +8,7 @@
 #include "flashlight/fl/distributed/DistributedApi.h"
 
 #include "flashlight/fl/common/Defines.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -21,34 +21,38 @@ FL_API DistributedBackend distributedBackend() {
 }
 
 FL_API void
-allReduce(Variable& var, double scale /* = 1.0 */, bool async /* = false */) {
+allReduce(Tensor& var, double scale /* = 1.0 */, bool async /* = false */) {
   if (getWorldSize() > 1) {
-    allReduce(var.tensor(), async);
+    // Explicitly select the allReduce(Tensor&, bool) overload
+    void (*tensorAllReduce)(Tensor&, bool) = &allReduce;
+    tensorAllReduce(var, async);
   }
-  var.tensor() *= scale;
+  var *= scale;
 }
 
 FL_API void allReduceMultiple(
-    std::vector<Variable> vars,
+    std::vector<Tensor> vars,
     double scale /* = 1.0 */,
     bool async /* = false */,
     bool contiguous /* = false */) {
   // return a vector of pointers to avoid copying
   std::vector<Tensor*> arrs;
   for (auto& var : vars) {
-    arrs.push_back(&var.tensor());
+    arrs.push_back(&var);
   }
   if (getWorldSize() > 1) {
     allReduceMultiple(arrs, async, contiguous);
   }
   for (auto& var : vars) {
-    var.tensor() *= scale;
+    var *= scale;
   }
 }
 
 FL_API void barrier() {
   auto tensor = Tensor::fromVector<int>({0});
-  allReduce(tensor, false);
+  // Explicitly select the allReduce(Tensor&, bool) overload
+  void (*tensorAllReduce)(Tensor&, bool) = &allReduce;
+  tensorAllReduce(tensor, false);
 
   // This hack is to make sure `tensor` will not be optimized away by a
   // JIT during allreduce().

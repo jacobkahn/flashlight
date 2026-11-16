@@ -98,9 +98,7 @@ DEFINE_bool(
     fl_amp_use_mixed_precision,
     false,
     "[train] Use mixed precision for training - scale loss and gradients up and down "
-    "by a scale factor that changes over time. If no fl optim mode is "
-    "specified with --fl_optim_mode when passing this flag, automatically "
-    "sets the optim mode to O1.");
+    "by a scale factor that changes over time.");
 DEFINE_double(
     fl_amp_scale_factor,
     65536.,
@@ -114,11 +112,6 @@ DEFINE_double(
     fl_amp_max_scale_factor,
     65536.,
     "[train] Maximum value for the loss scale factor in mixed precision training");
-DEFINE_string(
-    fl_optim_mode,
-    "",
-    "[train] Sets the flashlight optimization mode. "
-    "Optim modes can be O1, O2, or O3.");
 
 // Utility function that overrides flags file with command line arguments
 void parseCmdLineFlagsWrapper(int argc, char** argv) {
@@ -140,17 +133,17 @@ void evalLoop(
   mkdir_command << "mkdir -p " << FLAGS_eval_dir << fl::getWorldRank();
   system(mkdir_command.str().c_str());
   for (auto& sample : *dataset) {
-    std::vector<Variable> input = {
-        fl::Variable(sample.images, false), fl::Variable(sample.masks, false)};
+    std::vector<Tensor> input = {
+        fl::Tensor(sample.images, false), fl::Tensor(sample.masks, false)};
     auto output = model->forward(input);
     std::stringstream ss;
     ss << FLAGS_eval_dir << fl::getWorldRank() << "/detection" << idx
        << ".fltensor";
     auto outputFile = ss.str();
     int lastLayerIdx = output[0].dim(3) - 1;
-    auto scores = output[0].tensor()(
+    auto scores = output[0](
         fl::span, fl::span, fl::span, fl::range(lastLayerIdx, lastLayerIdx));
-    auto bboxes = output[1].tensor()(
+    auto bboxes = output[1](
         fl::span, fl::span, fl::span, fl::range(lastLayerIdx, lastLayerIdx));
     // TODO{fl::Tensor} - check writing Tensors -- generic API?
     fl::save(outputFile + "-imageSizes", sample.originalImageSizes);
@@ -276,17 +269,11 @@ int main(int argc, char** argv) {
   if (FLAGS_fl_amp_use_mixed_precision) {
     FL_LOG_MASTER(INFO)
         << "Mixed precision training enabled. Will perform loss scaling.";
-    auto flOptimLevel = FLAGS_fl_optim_mode.empty()
-        ? fl::OptimLevel::DEFAULT
-        : fl::OptimMode::toOptimLevel(FLAGS_fl_optim_mode);
-    fl::OptimMode::get().setOptimLevel(flOptimLevel);
-
     dynamicScaler = std::make_shared<fl::pkg::runtime::DynamicScaler>(
         FLAGS_fl_amp_scale_factor,
         FLAGS_fl_amp_max_scale_factor,
         FLAGS_fl_amp_scale_factor_update_interval);
   }
-  fl::DynamicBenchmark::setBenchmarkMode(true);
 
   ////////////////////////////
   // Create models
@@ -440,9 +427,7 @@ int main(int argc, char** argv) {
   // Training loop
   //////////////
   auto dataType = fl::dtype::f32;
-  if (FLAGS_fl_amp_use_mixed_precision && FLAGS_fl_optim_mode.empty()) {
-    // In case AMP is activated with DEFAULT mode,
-    // we manually cast input to fp16.
+  if (FLAGS_fl_amp_use_mixed_precision) {
     dataType = fl::dtype::f16;
   }
   for (int epoch = startEpoch; epoch < FLAGS_train_epochs; epoch++) {
@@ -464,24 +449,24 @@ int main(int argc, char** argv) {
 
       // 1. Sample
       sampleTimerMeter.resume();
-      auto input = fl::Variable(sample.images, false);
-      auto mask = fl::Variable(sample.masks, false);
+      auto input = fl::Tensor(sample.images, false);
+      auto mask = fl::Tensor(sample.masks, false);
       input = input.astype(dataType);
-      std::vector<Variable> targetBoxes(sample.target_boxes.size());
-      std::vector<Variable> targetClasses(sample.target_labels.size());
+      std::vector<Tensor> targetBoxes(sample.target_boxes.size());
+      std::vector<Tensor> targetClasses(sample.target_labels.size());
       std::transform(
           sample.target_boxes.begin(),
           sample.target_boxes.end(),
           targetBoxes.begin(),
           [&dataType](const Tensor& in) {
-            return fl::Variable(in.astype(dataType), false);
+            return fl::Tensor(in.astype(dataType), false);
           });
       std::transform(
           sample.target_labels.begin(),
           sample.target_labels.end(),
           targetClasses.begin(),
           [&dataType](const Tensor& in) {
-            return fl::Variable(in.astype(dataType), false);
+            return fl::Tensor(in.astype(dataType), false);
           });
       fl::sync();
       sampleTimerMeter.stopAndIncUnit();
@@ -503,9 +488,9 @@ int main(int argc, char** argv) {
         auto loss =
             criterion.forward(output[1], output[0], targetBoxes, targetClasses);
         // TODO{fl::Tensor} - explore using a scalar Tensor
-        auto accumLoss = fl::Variable(fl::full({1}, 0, dataType), true);
+        auto accumLoss = fl::Tensor(fl::full({1}, 0, dataType), true);
         for (const auto& losses : loss) {
-          fl::Variable scaled_loss = weightDict[losses.first] * losses.second;
+          fl::Tensor scaled_loss = weightDict[losses.first] * losses.second;
           accumLoss = scaled_loss + accumLoss;
         }
         fl::sync();
@@ -525,11 +510,11 @@ int main(int argc, char** argv) {
         }
 
         for (const auto& losses : loss) {
-          fl::Variable scaled_loss = weightDict[losses.first] * losses.second;
-          meters[losses.first].add(losses.second.tensor());
-          meters[losses.first + "_weighted"].add(scaled_loss.tensor());
+          fl::Tensor scaled_loss = weightDict[losses.first] * losses.second;
+          meters[losses.first].add(losses.second);
+          meters[losses.first + "_weighted"].add(scaled_loss);
         }
-        meters["sum"].add(accumLoss.tensor());
+        meters["sum"].add(accumLoss);
         break;
       }
 

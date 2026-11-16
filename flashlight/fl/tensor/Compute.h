@@ -115,6 +115,21 @@ FL_API void relativeSync(
 FL_API void eval(fl::Tensor& tensor);
 
 /**
+ * Non-blocking check: has this tensor's computation been launched?
+ *
+ * For JIT tensors, returns true if the graph has been evaluated (the node
+ * holds a concrete result). For non-JIT tensors, always returns true.
+ *
+ * This does NOT check whether async work has completed on the device —
+ * only whether `fl::eval` has been called. To block until device work
+ * completes, use `fl::sync`.
+ *
+ * @param[in] tensor the tensor to check.
+ * @return true if the tensor's value is available (eval has been called).
+ */
+FL_API bool ready(const fl::Tensor& tensor);
+
+/**
  * Returns the device ID of the active device of default type in the current
  * thread. This is backend agnostic - the ID may correspond to a CUDA-device, an
  * OpenCL device, or other arbitrary hardware. The default device (in the case

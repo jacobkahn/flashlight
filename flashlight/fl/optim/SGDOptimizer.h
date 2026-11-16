@@ -9,7 +9,7 @@
 
 #include "flashlight/fl/common/Defines.h"
 #include "flashlight/fl/optim/Optimizers.h"
-#include "flashlight/fl/tensor/TensorBase.h"
+#include "flashlight/fl/tensor/Tensor.h"
 
 namespace fl {
 
@@ -54,7 +54,7 @@ class FL_API SGDOptimizer : public FirstOrderOptimizer {
    * @param useNesterov Whether or not to use nesterov style momentum.
    */
   SGDOptimizer(
-      const std::vector<Variable>& parameters,
+      const std::vector<Tensor>& parameters,
       float learningRate,
       float momentum = 0,
       float weightDecay = 0,

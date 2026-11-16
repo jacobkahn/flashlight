@@ -12,8 +12,6 @@
 
 namespace fl {
 
-class Variable;
-
 /**
  * A Reducer which calls allReduce directly on gradients to process. All
  * synchronized gradients are scaled by a pre-specified factor.
@@ -32,11 +30,11 @@ class FL_API InlineReducer : public Reducer {
   explicit InlineReducer(double scale);
 
   /**
-   * Ingest a Variable and immediately call allReduce on it.
+   * Ingest a Tensor and immediately call allReduce on it.
    *
-   * @param[in] var the Variable to process for synchronization
+   * @param[in] var the Tensor to process for synchronization
    */
-  void add(Variable& var) override;
+  void add(Tensor& var) override;
 
   // no-op; no state
   void finalize() override {}

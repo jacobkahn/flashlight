@@ -24,7 +24,7 @@ class FullConnectionCriterion : public fl::BinaryModule {
 
   std::unique_ptr<Module> clone() const override;
 
-  fl::Variable forward(const fl::Variable& input, const fl::Variable& target)
+  fl::Tensor forward(const fl::Tensor& input, const fl::Tensor& target)
       override;
 
   std::string prettyString() const override;

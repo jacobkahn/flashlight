@@ -11,6 +11,8 @@
 
 #include "flashlight/fl/runtime/CUDAUtils.h"
 #include "flashlight/fl/runtime/DeviceManager.h"
+#include "flashlight/fl/runtime/Event.h"
+#include "flashlight/fl/runtime/CUDAEventImpl.h"
 
 namespace fl {
 
@@ -71,21 +73,15 @@ std::shared_ptr<CUDAStream> CUDAStream::wrapUnmanaged(
 }
 
 CUDAStream::~CUDAStream() {
+  // Never use FL_CUDA_CHECK in destructors — it throws, which triggers
+  // std::terminate(). During global static destruction the CUDA driver may
+  // already be shut down, making cudaErrorCudartUnloading unavoidable.
   if (managed_) {
-    FL_CUDA_CHECK(cudaStreamDestroy(nativeStream_));
-    // Ideally we should unconditionally destroy the event we created, but there
-    // is a race hazard between CUDAStream destructor in global context and CUDA
-    // shutdown (sometimes the latter may precede the former). So we destroy the
-    // event only when it's safe to do so
-    FL_CUDA_CHECK(cudaEventDestroy(event_));
+    cudaStreamDestroy(nativeStream_);
+    cudaEventDestroy(event_);
   } else {
-#ifdef NO_CUDA_STREAM_DESTROY_EVENT
-    // Note that this case only results in cuda event "resource leak" if someone
-    // creates an unmanaged cuda stream. But managed cuda streams are often used
-    // in a global context and released at program shutdown (e.g., for cudnn).
-    // So chances of real resource leak is very low.
-#else
-    FL_CUDA_CHECK(cudaEventDestroy(event_));
+#ifndef NO_CUDA_STREAM_DESTROY_EVENT
+    cudaEventDestroy(event_);
 #endif
   }
 }
@@ -104,8 +100,8 @@ void CUDAStream::sync() const {
 
 void CUDAStream::relativeSync(const CUDAStream& waitOn) const {
   auto& manager = DeviceManager::getInstance();
-  auto* oldActiveCUDADevice = &manager.getActiveDevice(DeviceType::CUDA);
-  bool needDeviceSwitch = oldActiveCUDADevice != &device_;
+  const auto& oldActiveCUDADevice = manager.getActiveDevice(DeviceType::CUDA);
+  bool needDeviceSwitch = &oldActiveCUDADevice != &device_;
   if (needDeviceSwitch) {
     device_.setActive();
   }
@@ -115,12 +111,45 @@ void CUDAStream::relativeSync(const CUDAStream& waitOn) const {
   FL_CUDA_CHECK(cudaStreamWaitEvent(
       this->nativeStream_, waitOn.event_, /* cudaEventWaitDefault = */ 0));
   if (needDeviceSwitch) {
-    oldActiveCUDADevice->setActive();
+    oldActiveCUDADevice.setActive();
+  }
+}
+
+void CUDAStream::relativeSync(const Stream& waitOn) const {
+  switch (waitOn.type()) {
+    case StreamType::CUDA:
+      relativeSync(waitOn.impl<CUDAStream>());
+      break;
+    case StreamType::Synchronous:
+      // Synchronous streams execute inline on the calling thread — all work
+      // is already complete by the time we reach this point.
+      break;
+    default: {
+      // For any other stream type (e.g. AsyncCPU), record a unified Event
+      // and insert a host callback that waits on it into the CUDA stream.
+      //
+      // cudaLaunchHostFunc requires a plain function pointer (cudaHostFn_t),
+      // so we heap-allocate the Event and pass it through void* userData.
+      auto* event = new Event(waitOn.createEvent());
+      FL_CUDA_CHECK(cudaLaunchHostFunc(
+          nativeStream_,
+          [](void* userData) {
+            auto* e = static_cast<Event*>(userData);
+            e->wait();
+            delete e;
+          },
+          event));
+      break;
+    }
   }
 }
 
 cudaStream_t CUDAStream::handle() const {
   return nativeStream_;
+}
+
+Event CUDAStream::createEvent() const {
+  return Event(detail::makeCUDAEventImpl(*this));
 }
 
 } // namespace fl
